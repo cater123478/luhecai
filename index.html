@@ -485,7 +485,7 @@ function renderTm(result, currentPeriod) {
     document.getElementById("tmOut").innerHTML = `
     <div class="card tm">
     🔥 当前${currentPeriod}期分析<br><br>
-    🎯 推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
+    🎯 号码推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
     🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
     </div>`;
 }
@@ -575,7 +575,7 @@ async function showTmHistory(){
       if (i.top && i.top.length > 0) {
           html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
       }
-      html += `🎯 推荐：<span style="word-break:break-all;">${(i.nums || []).join(",")}</span><br>`;
+      html += `🎯 号码推荐：<span style="word-break:break-all;">${(i.nums || []).join(",")}</span><br>`;
       // 把 zodiacNums 转换成生肖名称
       let zodiacNames = (i.zodiacNums || []).join('、');  // 直接拼接
       html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames  || '无'}</span><br>`;
