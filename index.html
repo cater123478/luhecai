@@ -113,6 +113,7 @@ h2{text-align:center;}
 <button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
 <button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
 <button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
+<!--<button class="btn" onclick="fixAllHistoryData()" style="background:linear-gradient(45deg,#ff5722,#ff9800);color:#fff;">🔧 修复历史数据</button>-->
 
 <div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
 <div id="indexOut"></div>
@@ -162,8 +163,8 @@ const today = new Date().toISOString().split("T")[0];
 let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
 let loading = false;
 const kjDataSize = 100;
-const hisKjDataSize = 30;
-const fupanSize = 30;
+const hisKjDataSize = 10;
+const fupanSize = 10;
 let currentAnalysis = null;
 
 // 生肖映射（按2026年马年规则）
@@ -199,35 +200,65 @@ function formatNums(nums) {
 
 // ===== 数据 =====
 async function fetchRaw(){
-    try{
+    try {
+        // 添加10秒超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
         let res = await fetch("https://ls.kjkj.fit/kj?t=" + Date.now(), {
-            cache: "no-store"
+            cache: "no-store",
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
+        
         if(!res.ok){
-            throw new Error("接口状态异常");
+            throw new Error(`接口状态异常: ${res.status}`);
         }
         let text = await res.text();
         try{
             return JSON.parse(text);
         }catch(e){
-            console.warn("返回不是JSON：", text);
+            console.warn("返回不是JSON：", text.substring(0, 200));
             return { data: [] };
         }
     }catch(e){
-        console.log("接口失败", e);
+        if (e.name === 'AbortError') {
+            console.error("接口请求超时（>10秒）");
+        } else {
+            // 接口请求失败
+        }
         return { data: [] };
     }
 }
 
-async function fetchData(){
+async function fetchData(forceRefresh = false){
     const CACHE_KEY = "cacheHistory";
     const CACHE_TIME_KEY = "cacheHistoryTime";
     const EXPIRE = 30 * 60 * 1000;
-    let cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
+    
+    // 安全读取缓存
+    let cache = [];
+    try {
+        let cacheStr = localStorage.getItem(CACHE_KEY);
+        if (cacheStr) {
+            cache = JSON.parse(cacheStr);
+        }
+    } catch(e) {
+        console.warn("缓存数据解析失败，将重新获取");
+        cache = [];
+        localStorage.removeItem(CACHE_KEY);
+    }
+    
     let cacheTime = localStorage.getItem(CACHE_TIME_KEY);
 
-    if(cache.length > 0 && cacheTime && (Date.now() - cacheTime < EXPIRE)){
+    // 如果不是强制刷新，且缓存有效，则使用缓存
+    if(!forceRefresh && cache.length > 0 && cacheTime && (Date.now() - cacheTime < EXPIRE)){
         return cache;
+    }
+    
+    if (forceRefresh) {
+        // 强制刷新，忽略缓存
     }
 
     try{
@@ -235,9 +266,9 @@ async function fetchData(){
         let data = (json.data || []).slice(0, kjDataSize);
         // ❗ 接口空 → 用旧缓存
         if(!data.length){
-            if(cache){
+            if(cache.length > 0){
                 console.warn("接口无数据，用缓存");
-                return JSON.parse(cache);
+                return cache;
             }
             return [];
         }
@@ -245,9 +276,9 @@ async function fetchData(){
         localStorage.setItem(CACHE_TIME_KEY, Date.now());
         return data;
     }catch(e){
-        console.log("拉取数据异常", e);
-        if(cache){
-            return JSON.parse(cache);
+        console.warn("拉取数据异常", e);
+        if(cache.length > 0){
+            return cache;
         }
         return [];
     }
@@ -349,12 +380,24 @@ function saveHot15History(hot15, latest, history) {
     list.sort((a, b) => b.expect - a.expect);
     if (list.length > 30) list = list.slice(0, 30);
     localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    // 自动同步到云端（静默执行，不阻塞）
+    saveToCloud(list).catch(e => console.error("云端同步失败:", e));
 }
 
 function updateResult(latest){
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     let qishu = Number(latest.qishu);
-    let openNum = Number(latest.num.split(",")[6]);
+    
+    // 解析特码（兼容多种格式）
+    let nums;
+    if (Array.isArray(latest.num)) {
+        nums = latest.num;
+    } else if (typeof latest.num === 'string') {
+        nums = latest.num.replace(/\+/g, '').split(',').map(n => parseInt(n.trim()));
+    }
+    let openNum = nums ? nums[nums.length - 1] : null;
+    
     let found = false;
     list.forEach(item => {
         if(Number(item.expect) === qishu){
@@ -385,6 +428,9 @@ function updateResult(latest){
     }
     list.sort((a,b)=>b.expect - a.expect);
     localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    // 开奖结果更新后自动同步到云端
+    saveToCloud(list).catch(e => console.error("云端同步失败:", e));
 
     let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
     let idx = hot15History.findIndex(item => item.expect === qishu);
@@ -550,7 +596,7 @@ async function loadHistory(){
             let color = getBoseColor(n);  // 返回 #e74c3c
             return `<span style="color:${color}">${n}(${getZodiac(n)})</span>`;
         }).join(' ');
-        html += `${i.qishu}期 (${i.date})<br>${display}<br><br>`;
+        html += `<b>${i.qishu}期</b> <span style="white-space:nowrap;">${display}</span><br><br>`;
     });
     html+=`</div>`;
     box.innerHTML = html;
@@ -559,19 +605,39 @@ async function loadHistory(){
 
 async function showTmHistory(){
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-    list = list.filter(i => i.open !== null && i.open !== undefined && i.expect).slice(0,fupanSize);
+    
+    // 获取当前最新开奖期号，只显示历史期次（已开奖的）
+    let latestQishu = 0;
+    try {
+        const data = await fetchData();
+        if (data && data.length > 0) {
+            latestQishu = parseInt(data[0].qishu) || 0;
+        }
+    } catch(e) {}
+    
+    // 过滤：只显示已开奖的历史记录（expect <= 最新开奖期号）
+    list = list.filter(i => i.expect && i.expect <= latestQishu).slice(0,fupanSize);
+    
     if(!list.length){
         document.getElementById("tmHistory").innerHTML = "暂无历史投注数据";
         return;
     }
 
     let box = document.getElementById("tmHistory");
-    box.innerHTML = "⏳ 正在加载历史投注结果...";
-    await new Promise(r => setTimeout(r, 200));
-
+    
     let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
     list.forEach(i=>{
-      html += `<div style="margin-bottom:10px;">${i.expect}期<br>`;
+      html += `<div style="margin-bottom:10px;">${i.expect}期`;
+      
+      // 如果open为null，显示待更新提示
+      if (i.open === null || i.open === undefined) {
+          html += ` <span style="color:#999;font-size:11px;">（⏳ 开奖结果待更新）</span>`;
+      } else {
+          let openZodiac = getZodiac(i.open);
+          html += ` <span style="color:#999;font-size:11px;">开奖：${i.open}（${openZodiac}）</span>`;
+      }
+      html += `<br>`;
+      
       if (i.top && i.top.length > 0) {
           html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
       }
@@ -589,8 +655,11 @@ async function showTmHistory(){
       html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
       if (i.nums.length === 0) {
           html += "⚠️ 无预测";
+      } else if (i.open === null || i.open === undefined) {
+          // 未开奖的显示提示
+          html += `📌 推荐已生成，等待开奖结果`;
       } else {
-          html += i.hitNums ? "✅ 推荐命中" : "❌ 推荐未中";
+          html += i.hitNums ? "✅ 号码命中" : "❌ 号码未中";
           html += i.hitZodiac ? "✅ 生肖命中" : "❌ 生肖未中";
       }
       html += `</div><hr>`;
@@ -598,13 +667,86 @@ async function showTmHistory(){
 
     html += `</div>`;
     box.innerHTML = html;
+    
+    // 静默补全缺失的开奖结果（不刷新页面，避免闪烁）
+    silentUpdateMissingResults(list);
 }
 
-async function updateMarquee() {
+// 静默补全缺失的开奖结果（不触发界面刷新）
+async function silentUpdateMissingResults(list) {
+    const needUpdate = list.filter(i => (i.open === null || i.open === undefined) && i.expect);
+    if (needUpdate.length === 0) return;
+
+    try {
+        const data = await fetchData();
+        let updated = false;
+        
+        for (let item of needUpdate) {
+            const found = data.find(d => d.qishu == item.expect);
+            if (found && found.num) {
+                // 解析num字段（兼容多种格式）
+                let nums;
+                if (Array.isArray(found.num)) {
+                    nums = found.num;
+                } else if (typeof found.num === 'string') {
+                    // 处理字符串格式，可能包含 "+" 号
+                    nums = found.num.replace(/\+/g, '').split(',').map(n => parseInt(n.trim()));
+                }
+                
+                if (nums && nums.length >= 7) {
+                    // 取最后一个作为特码（第7个号码）
+                    let teCode = nums[nums.length - 1];
+                    
+                    // 验证特码是否有效（1-49）
+                    if (teCode >= 1 && teCode <= 49) {
+                        item.open = teCode;
+                        item.hitNums = item.nums.includes(item.open);
+                        let openZodiac = getZodiac(item.open);
+                        item.hitZodiac = (item.zodiacNums || []).includes(openZodiac);
+                        updated = true;
+                    } else {
+                        // 特码无效，跳过
+                    }
+                } else {
+                    // 号码数量不足，跳过
+                }
+            }
+        }
+        
+        if (updated) {
+            // 保存更新后的数据（静默保存，不刷新界面）
+            localStorage.setItem("tmHistory", JSON.stringify(list));
+
+            // 同步到云端
+            saveToCloud(list).catch(e => {});
+        }
+
+    } catch (e) {
+        // 补全失败，忽略
+    }
+}
+
+async function updateMarquee(latestData) {
   let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+  let el = document.getElementById("marqueeText");
+  
+  // 如果没有传入数据，先显示默认文字，尝试异步更新
+  if (!latestData) {
+    el.innerHTML = base + "　　" + base;
+    try {
+      let raw = await fetchData();
+      if (raw && raw[0]) {
+        latestData = raw[0];
+      } else {
+        return; // 数据无效，保持默认文字
+      }
+    } catch (e) {
+      return; // 保持默认文字不变
+    }
+  }
+  
   try {
-    let raw = await fetchData(); // 用你的缓存函数
-    let latest = raw[0];
+    let latest = latestData;
     let lastId = localStorage.getItem("marqueeLastId");
     let numsHtml = formatNums(latest.num);
     let text = "";
@@ -616,10 +758,9 @@ async function updateMarquee() {
       text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
     }
     // ⭐ 双倍拼接（无缝滚动）
-    document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+    el.innerHTML = text + "　　" + text;
   } catch (e) {
-    console.log("滚动条失败", e);
-    document.getElementById("marqueeText").innerText = base;
+    el.innerHTML = base + "　　" + base;
   }
 }
 
@@ -643,28 +784,382 @@ function scheduleRefresh() {
     }, delay);
 }
 
+// ==================== 云端自动同步（JSONBin.io）====================
+
+// ⚠️ 配置：在这里填入你的 JSONBin.io API Key
+// 获取方式：https://jsonbin.io/login → 用GitHub登录 → Create New API Key
+const CLOUD_API_KEY = "$2a$10$idmr3285C98hx3Uv/D8n8.64MRmWVxMPV4LlqvqlTbLJZ85pebfCa";  // ← 在这里粘贴你的API Key
+const CLOUD_BIN_KEY = "cloud_bin_id";  // 存储binId的localStorage key
+const JSONBIN_API_URL = "https://api.jsonbin.io/v3";
+
+// 获取存储的binId
+function getCloudBinId() {
+  return localStorage.getItem(CLOUD_BIN_KEY) || "";
+}
+
+// 保存binId
+function saveCloudBinId(binId) {
+  localStorage.setItem(CLOUD_BIN_KEY, binId);
+}
+
+// 从云端加载历史推荐（页面打开时自动调用）
+async function loadFromCloud() {
+  if (!CLOUD_API_KEY) {
+    return null;
+  }
+  
+  const binId = getCloudBinId();
+  if (!binId) {
+    return null;
+  }
+  
+  try {
+    const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+      headers: { "X-Master-Key": CLOUD_API_KEY }
+    });
+    
+    if (!res.ok) {
+      return null;
+    }
+    
+    const result = await res.json();
+    const cloudData = result.record;
+    
+    if (cloudData && Array.isArray(cloudData)) {
+      // 获取本地数据用于智能合并
+      let localData = [];
+      try {
+        localData = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+      } catch(e) {}
+      
+      // 智能合并：对于每期数据，优先保留有open值（已开奖）的版本
+      const mergedData = [];
+      const processedExpects = new Set();
+      
+      // 先处理云端数据
+      for (const cloudItem of cloudData) {
+        if (!cloudItem.expect) continue;
+        
+        const localItem = localData.find(i => i.expect === cloudItem.expect);
+        let finalItem = { ...cloudItem };
+        
+        if (localItem) {
+          // 合并策略：优先保留有有效open值的版本
+          const cloudHasOpen = cloudItem.open !== null && cloudItem.open !== undefined && cloudItem.open !== 0;
+          const localHasOpen = localItem.open !== null && localItem.open !== undefined && localItem.open !== 0;
+          
+          if (localHasOpen && !cloudHasOpen) {
+            // 本地有open值，云端没有 → 用本地的open
+            finalItem.open = localItem.open;
+            finalItem.hitNums = localItem.hitNums;
+            finalItem.hitZodiac = localItem.hitZodiac;
+          } else if (localHasOpen && cloudHasOpen && localItem.open !== cloudItem.open) {
+            // 两边都有open但值不同 → 保留本地的（假设本地是最新修复过的）
+            finalItem.open = localItem.open;
+            finalItem.hitNums = localItem.hitNums;
+            finalItem.hitZodiac = localItem.hitZodiac;
+          }
+          
+          // 合并nums/zodiacNums（取更完整的）
+          if ((!finalItem.nums || finalItem.nums.length === 0) && (localItem.nums && localItem.nums.length > 0)) {
+            finalItem.nums = localItem.nums;
+          }
+          if ((!finalItem.zodiacNums || finalItem.zodiacNums.length === 0) && (localItem.zodiacNums && localItem.zodiacNums.length > 0)) {
+            finalItem.zodiacNums = localItem.zodiacNums;
+          }
+        }
+        
+        mergedData.push(finalItem);
+        processedExpects.add(cloudItem.expect);
+      }
+      
+      // 添加本地有但云端没有的记录
+      for (const localItem of localData) {
+        if (localItem.expect && !processedExpects.has(localItem.expect)) {
+          mergedData.push(localItem);
+        }
+      }
+
+      // 按期号排序（新的在前）
+      mergedData.sort((a, b) => (b.expect || 0) - (a.expect || 0));
+
+      // 保存合并后的数据
+      localStorage.setItem("tmHistory", JSON.stringify(mergedData));
+      return mergedData;
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 保存数据到云端（生成推荐/开奖更新时自动调用）
+async function saveToCloud(data) {
+  if (!CLOUD_API_KEY) {
+    return false;
+  }
+  
+  try {
+    const binId = getCloudBinId();
+    let url, method;
+    
+    if (binId) {
+      // 更新现有存储
+      url = `${JSONBIN_API_URL}/b/${binId}`;
+      method = "PUT";
+    } else {
+      // 创建新存储
+      url = `${JSONBIN_API_URL}/b`;
+      method = "POST";
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": CLOUD_API_KEY,
+        "X-Bin-Name": "luhecai-recommend-history"
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || "保存失败");
+    }
+    
+    const result = await res.json();
+    
+    // 如果是首次创建，保存binId
+    if (!binId && result.metadata?.id) {
+      saveCloudBinId(result.metadata.id);
+    }
+
+    return true;
+
+  } catch (e) {
+    return false;
+  }
+}
+
+// 强制刷新：清除缓存并重新获取数据
+async function forceRefresh() {
+    let box = document.getElementById("indexOut");
+    box.innerHTML = "🔄 正在强制刷新，清除旧缓存...";
+    
+    // 清除所有缓存
+    localStorage.removeItem("cacheHistory");
+    localStorage.removeItem("cacheHistoryTime");
+
+    try {
+        // 强制刷新获取最新数据
+        const data = await fetchData(true);  // true = 强制刷新
+        
+        if (data && data.length > 0) {
+            box.innerHTML = "";
+            updateMarquee(data[0]);  // 传入已获取的数据
+            await showTmAnalysis();
+            alert(`✅ 刷新成功！\n\n当前期号：${data[0].qishu}期\n数据时间：${new Date().toLocaleTimeString()}`);
+        } else {
+            box.innerHTML = "⚠️ 获取数据失败，请检查网络";
+        }
+    } catch(e) {
+        box.innerHTML = "❌ 刷新失败：" + e.message;
+    }
+}
+
+// 修复所有历史数据的特码和命中结果
+async function fixAllHistoryData() {
+    let box = document.getElementById("indexOut");
+    
+    if (!confirm("🔧 确定要修复所有历史数据吗？\n\n这将：\n1. 强制获取最新开奖数据\n2. 重新计算每期的特码（取最后一个号码）\n3. 更新所有命中结果\n4. 保存到本地并同步云端")) {
+        return;
+    }
+    
+    box.innerHTML = "🔧 正在修复历史数据，请稍等...";
+    
+    try {
+        // 1. 获取历史记录
+        let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+
+        if (list.length === 0) {
+            alert("没有历史数据需要修复");
+            return;
+        }
+
+        // 2. 获取最新开奖数据（强制刷新，不用缓存）
+        box.innerHTML = "🔧 步骤1/4: 正在强制获取最新开奖数据...";
+
+        const data = await fetchData(true);  // true = 强制刷新
+
+        if (!data || data.length === 0) {
+            alert("❌ 无法获取开奖数据，请检查网络连接\n\n可能需要点击多次重试");
+            return;
+        }
+
+        // 3. 逐期修复
+        box.innerHTML = "🔧 步骤2/4: 正在重新计算特码和命中结果...";
+        let fixedCount = 0;
+        let errorCount = 0;
+        let skipCount = 0;
+        
+        for (let item of list) {
+            const found = data.find(d => d.qishu == item.expect);
+            
+            if (found && found.num) {
+                // 解析号码（兼容数组和字符串）
+                let nums;
+                if (Array.isArray(found.num)) {
+                    nums = found.num.map(n => parseInt(n));
+                } else if (typeof found.num === 'string') {
+                    // 去除所有非数字字符，然后分割
+                    nums = found.num.replace(/[^0-9,]/g, '').split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                }
+
+                if (nums && nums.length >= 7) {
+                    // 取最后一个作为特码
+                    let newOpenNum = nums[nums.length - 1];
+                    
+                    // 验证特码有效性（1-49）
+                    if (newOpenNum >= 1 && newOpenNum <= 49) {
+                        let oldOpen = item.open;
+                        
+                        // 强制更新（不管是否相同）
+                        item.open = newOpenNum;
+                        
+                        // 重新计算命中结果
+                        item.hitNums = (item.nums || []).includes(item.open);
+                        let openZodiac = getZodiac(item.open);
+                        item.hitZodiac = (item.zodiacNums || []).includes(openZodiac);
+                        
+                        if (oldOpen !== newOpenNum) {
+                            fixedCount++;
+                        } else {
+                            skipCount++;
+                        }
+                    } else {
+                        // 特码无效
+                        errorCount++;
+                    }
+                } else {
+                    // 号码数量不足
+                    errorCount++;
+                }
+            } else {
+                // API中未找到该期数据
+            }
+        }
+
+        // 4. 保存修复后的数据
+        box.innerHTML = "🔧 步骤3/4: 正在保存到本地存储...";
+        localStorage.setItem("tmHistory", JSON.stringify(list));
+
+        // 5. 同步到云端
+        box.innerHTML = "🔧 步骤4/4: 正在同步到云端...";
+        let cloudResult = await saveToCloud(list);
+        
+        // 6. 强制刷新显示
+        box.innerHTML = "";
+        updateMarquee(data[0]);  // 传入已获取的数据
+        await showTmAnalysis();  // 这会重新渲染主界面
+        
+        // 手动触发一次历史结果显示（确保使用最新数据）
+        await showTmHistory();   // 强制刷新历史记录
+        
+        // 7. 显示结果
+        alert(`✅ 修复完成！\n\n📊 数据统计：\n• 修复了 ${fixedCount} 条记录\n• 无需修复 ${skipCount} 条\n• 出错 ${errorCount} 条\n\n💾 数据已保存到本地${cloudResult ? '并同步到云端' : '（云端同步失败）'}\n\n请查看"历史投注结果"确认`);
+
+    } catch(e) {
+        box.innerHTML = "❌ 修复失败：" + e.message;
+        alert("❌ 修复失败：" + e.message + "\n\n请查看控制台(F12)了解详情");
+    }
+}
+
 async function init(){
     let box = document.getElementById("indexOut");
-    box.innerHTML = "⏳ 正在加载数据...";
+    const startTime = Date.now();
+    
+    // ⚡ 立即从缓存显示滚动提示（毫秒级，不等任何网络请求）
+    try {
+        let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (cache && cache.length > 0) {
+            let latest = cache[0];
+            let numsHtml = formatNums(latest.num);
+            let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+            let text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
+            document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+        } else {
+            document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
+        }
+    } catch(e) {
+        document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
+    }
+    
+    box.innerHTML = "⏳ 正在连接服务器...";
     let slowTimer = setTimeout(()=>{
-        box.innerHTML = "🐢 网络有点慢，请稍等...";
-    }, 3000);
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        box.innerHTML = `🐢 网络较慢（已等待${elapsed}秒），请稍等...<br><small>可能原因：防火墙/代理/网络问题</small>`;
+    }, 5000);
+
+    // 自动从云端加载历史推荐（如果配置了API Key）
+    if (CLOUD_API_KEY) {
+      await loadFromCloud();
+    }
+
+    box.innerHTML = "⏳ 正在获取开奖数据...";
     let data = [];
+    let useCache = false;
+    
     try{
         data = await fetchData();
+        
+        // 如果API返回空数据，尝试使用缓存
+        if (!data || data.length === 0) {
+            let cacheStr = localStorage.getItem("cacheHistory");
+            if (cacheStr) {
+                try {
+                    data = JSON.parse(cacheStr);
+                    useCache = true;
+                } catch(e) {
+                    // 缓存解析失败
+                }
+            }
+        }
     }catch(e){
-        console.log("加载异常", e);
+        // API失败时，尝试使用缓存
+        let cacheStr = localStorage.getItem("cacheHistory");
+        if (cacheStr) {
+            try {
+                data = JSON.parse(cacheStr);
+                useCache = true;
+            } catch(e2) {
+                // 缓存也解析失败
+            }
+        }
     }
     clearTimeout(slowTimer);
+    
     if(!data || !data.length){
         box.innerHTML = `
         ⚠️ 数据加载失败<br><br>
-        <button onclick="location.reload()">🔄 点击重试</button>
+        <div style="font-size:12px;color:#666;margin:10px 0;">
+        可能的原因：<br>
+        • 网络连接问题<br>
+        • 防火墙/杀毒软件拦截<br>
+        • 服务器暂时不可用
+        </div>
+        <button onclick="location.reload()" style="margin-right:10px;">🔄 重试</button>
+        <button onclick="fixAllHistoryData()">🔧 修复历史数据</button>
         `;
         return;
     }
+    
     box.innerHTML = "";
-    updateMarquee();
+    if (useCache) {
+        box.innerHTML += `<div style="color:#ff9800;font-size:12px;margin-bottom:10px;">⚠️ 当前使用的是缓存数据（网络可能有问题）</div>`;
+    }
+    updateMarquee(data[0]);  // 传入已获取的数据，不再重复请求
     await showTmAnalysis();
 }
 

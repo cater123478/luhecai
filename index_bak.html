@@ -18,9 +18,6 @@ h2{text-align:center;}
   box-shadow:0 2px 6px rgba(0,0,0,0.1);
 }
 
-.fixed{border-left:5px solid #4a90e2;}
-.best{border-left:5px solid #28a745;}
-.balance{border-left:5px solid #ff9800;}
 .tm{border-left:5px solid #e91e63;}
 
 .btn{
@@ -29,7 +26,6 @@ h2{text-align:center;}
 }
 
 .btn-rec{background:linear-gradient(45deg,#4caf50,#2ecc71);}
-.btn-fixed{background:linear-gradient(45deg,#2196f3,#42a5f5);}
 .btn-data{background:linear-gradient(45deg,#ff9800,#ffb74d);}
 .btn-tm{background:linear-gradient(45deg,#e91e63,#f06292);}
 
@@ -54,21 +50,7 @@ h2{text-align:center;}
 #toast.show{
   opacity:1;
 }
-.tip{
-  background:linear-gradient(45deg,#e3f2fd,#f1f8ff);
-  color:#333;
-  padding:10px 14px;
-  border-radius:10px;
-  font-size:14px;
-  margin:10px 0;
-  border-left:4px solid #2196f3;
-}
-.tip2{
-  text-align:center;
-  font-size:13px;
-  color:#666;
-  margin-top:6px;
-}
+
 .marquee{
   width:100%;
   overflow:hidden;
@@ -82,7 +64,7 @@ h2{text-align:center;}
   display:inline-block;
   white-space:nowrap;
   padding-left:100%;
-  animation:scroll 35s linear infinite;   /*越小越快，滚动速度设置*/
+  animation:scroll 31s linear infinite;   /*越小越快，滚动速度设置*/
 }
 
 @keyframes scroll{
@@ -126,34 +108,12 @@ h2{text-align:center;}
 <div class="marquee">
   <div id="marqueeText" class="marquee-text"></div>
 </div>
-<!-- ==============================覆盖 + 防冷 + 稳定================================= -->
 <h2>🔥 玩彩小助手</h2>
-<!--<div class="tip2">
-  ⚡ 建议每天只参考一次，避免频繁刷新影响判断
-</div>-->
-<!--<button class="btn btn-rec" onclick="generateRecommendations()">🎯 刷新推荐</button>
-<button class="btn btn-fixed" onclick="changeFixed()">🔄 换固定组</button>-->
-<!--<button class="btn btn-tm" onclick="showTmAnalysis()">📊 特码分析</button>-->
 <button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>
 <button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
-<!--<button class="btn btn-fixed" onclick="showTmAnalysis(true)">📊 强制刷新特码（慎用）</button>-->
 <button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
-<!--<button onclick="backtestHot20()">📊 回测热号</button>-->
 <button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
 
-<!--<div class="card" style="border-left:5px solid #9c27b0;padding:10px 12px;overflow:hidden;">
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-    <span id="hcLabel" style="font-size:13px;font-weight:bold;white-space:nowrap;">📊 横财富30码</span>
-    <button onclick="applyHengCai()" style="padding:4px 14px;border:none;border-radius:4px;background:#9c27b0;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap;">应用</button>
-    <button onclick="clearHengCai()" style="padding:4px 12px;border:none;border-radius:4px;background:#999;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap;">清除</button>
-  </div>
-  <textarea id="hcInput" rows="3" placeholder="粘贴横财富30码，点击应用获取推荐号码" style="display:block;width:100%;max-width:100%;padding:6px 10px;border-radius:4px;border:1px solid #ddd;font-size:13px;box-sizing:border-box;resize:vertical;overflow:auto;min-height:40px;max-height:120px;font-family:inherit;"></textarea>
-</div>
-<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
-  <input id="shengXiaoInput" type="text" placeholder="输入生肖，如：鼠牛马" style="flex:1;min-width:100px;padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:12px;">
-  <button onclick="applyShengXiaoFilter()" style="padding:3px 12px;border:none;border-radius:4px;background:#ff6f00;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap;">
-    剔除生肖</button>
-</div>-->
 <div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
 <div id="indexOut"></div>
 <div id="fixedOut"></div>
@@ -202,12 +162,9 @@ const today = new Date().toISOString().split("T")[0];
 let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
 let loading = false;
 const kjDataSize = 100;
-const hisKjDataSize = 20;
-const fupanSize = 20;
+const hisKjDataSize = 30;
+const fupanSize = 30;
 let currentAnalysis = null;
-let shengXiaoFilteredNums = [];
-let currentHengCaiResult = null;  // 保存当前横财富分析结果
-
 
 // 生肖映射（按2026年马年规则）
 const ZODIAC_MAP = {
@@ -240,32 +197,22 @@ function formatNums(nums) {
     }).join("");
 }
 
-
-function seededRandom(seed){
-    let x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-}
-
 // ===== 数据 =====
 async function fetchRaw(){
     try{
         let res = await fetch("https://ls.kjkj.fit/kj?t=" + Date.now(), {
             cache: "no-store"
         });
-
         if(!res.ok){
             throw new Error("接口状态异常");
         }
-
         let text = await res.text();
-
         try{
             return JSON.parse(text);
         }catch(e){
             console.warn("返回不是JSON：", text);
             return { data: [] };
         }
-
     }catch(e){
         console.log("接口失败", e);
         return { data: [] };
@@ -286,7 +233,6 @@ async function fetchData(){
     try{
         let json = await fetchRaw();
         let data = (json.data || []).slice(0, kjDataSize);
-
         // ❗ 接口空 → 用旧缓存
         if(!data.length){
             if(cache){
@@ -295,20 +241,14 @@ async function fetchData(){
             }
             return [];
         }
-
-        // ✅ 写缓存
         localStorage.setItem(CACHE_KEY, JSON.stringify(data));
         localStorage.setItem(CACHE_TIME_KEY, Date.now());
-
         return data;
-
     }catch(e){
         console.log("拉取数据异常", e);
-        // ❗ 兜底
         if(cache){
             return JSON.parse(cache);
         }
-
         return [];
     }
 }
@@ -329,100 +269,6 @@ function showToast(msg){
     },2000);
 }
 
-// ===== 特码权重 =====
-function calcTmWeights(history, seed){
-
-    let freq = Array(50).fill(0);
-    let last = Array(50).fill(999);
-
-    history.forEach((p, idx)=>{
-        let tm = p[6];
-        freq[tm]++;
-        // ⭐ 最近出现位置
-        if(last[tm] === 999){
-            last[tm] = idx;
-        }
-    });
-
-    let maxF = Math.max(...freq);
-    let weights = [];
-    for(let i=1;i<=49;i++){
-        // ⭐ 热度
-        let hot = freq[i] / (maxF || 1);
-        // ⭐ 重复加分
-        let repeatBonus = 0;
-        if (freq[i] >= 3) {
-            repeatBonus = 0.3;
-        } else if (freq[i] >= 2) {
-            repeatBonus = 0.2;
-        } else if (freq[i] >= 1) {
-            repeatBonus = 0.1;
-        }
-        // ⭐ 遗漏值（越久没出越高），last[i] 越小 → 最近开过 → gap 小；last[i] 越大 → 很久没开 → gap 大
-        let gap = Math.min(last[i], 40) / 40;
-        // ⭐ 极冷号额外加分,===== 冷号加分（遗漏越久，加分越多） =====
-        let cold = 0;
-        // last[i] 表示号码 i 距离最近一次开奖的间隔期数（遗漏值）
-        // 例如：last[1] = 0 表示 01 上期刚开，last[1] = 5 表示 01 已经5期没开了
-        if(last[i] > 30){
-            cold = 0.45;
-        }else if(last[i] > 20){
-            cold = 0.25;
-        }else if(last[i] > 10){
-            cold = 0.12;
-        }
-
-        // ⭐ 最近刚开 → 压制, ===== 近期惩罚（刚开过 → 权重打折） =====,默认不打折
-        let recentPenalty = 1;
-        if(last[i] <= 1){
-          // 上期刚开 → 权重 × 0.45（严重压制）
-            recentPenalty = 0.45;
-        }else if(last[i] <= 3){
-          // 最近2-3期开过 → 权重 × 0.7（中等压制）
-            recentPenalty = 0.7;
-        }
-
-        // ⭐ 新权重公式
-        // let w = 0.15 + hot * 0.35 + gap * 0.6 + cold + seededRandom(seed + i) * 0.18;
-        // let w = 0.2 + hot * 0.45 + gap * 0.4 + cold + seededRandom(seed + i) * 0.12;
-        let w = 0.2 + hot * 0.45 + gap * 0.4 + cold + repeatBonus + seededRandom(seed + i) * 0.12;
-        // w *= recentPenalty;
-        weights[i] = w;
-    }
-
-    return weights;
-}
-
-
-// ===== 特码生成 =====
-function genTmUltimate(weights, seed){
-    let arr = [];
-    for(let i=1;i<=49;i++){
-        arr.push({n: i, w: weights[i]});
-    }
-    arr.sort((a,b)=>b.w-a.w);
-    let top = arr.slice(0,40).map(i=>i.n);
-    let bets = shrinkBets(top, seed);
-
-    // 统计号码出现频率
-    let freq = {};
-    bets.forEach(b=>{
-        b.forEach(n=>{
-            freq[n] = (freq[n] || 0) + 1;
-        });
-    });
-
-    // 取出现频率最高的8个号码
-    let nums = Object.keys(freq).sort((a,b)=>{
-        let diff = freq[b] - freq[a];
-        if(diff !== 0) return diff;
-        return weights[b] - weights[a];
-    }).slice(0,8).map(Number).sort((a,b)=>a-b);
-
-    return { nums, top, kill: arr.slice(40).map(i=>i.n) };
-}
-
-
 // ===== 特码分析 =====
 async function showTmAnalysis(forceUpdate=false){
     if(forceUpdate && !confirm("=====  确认刷新特码？=====")){
@@ -431,103 +277,77 @@ async function showTmAnalysis(forceUpdate=false){
     let box = document.getElementById("tmOut");
     box.innerHTML = "⏳ 正在计算分析...";
     await new Promise(r => setTimeout(r, 300));
+
     let raw = await fetchData();
     if(!raw || !raw.length){
         box.innerHTML = "⚠️ 拉取数据失败";
         return;
     }
+
     let latest = raw[0];
     let history = getHistory(raw);
-    let latestId = latest.id;
     let currentPeriod = Number(latest.qishu) + 1;
-    let seed_tm = latestId * 10 + 1;
-    if(forceUpdate){
-        seed_tm += Date.now();
-    }
+
     updateResult(latest);
-    // raw.slice(0, 10).forEach(item => updateResult(item));
-      // ⭐ 每次都重新算（关键）
-    let wtm = calcTmWeights(history, seed_tm);
-    fixMissingHistory(latest);
-    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-    let cachedItem = list.find(i => i.expect === currentPeriod);
-    if(1===1 && cachedItem && !forceUpdate){
-        showToast("✅ 已生成本期分析结果");
-        currentAnalysis = {
-            nums: cachedItem.nums,
-            top: cachedItem.top,
-            kill: cachedItem.kill,
-            seed: seed_tm,
-            weights: wtm
-        };
-        renderTm(list.find(i => i.expect === currentPeriod), currentPeriod);
-        return;
-    }
-    let result = genTmUltimate(wtm, seed_tm);
+
+    // ⭐ 只算热号15码
+    let hot15 = getHot15(history);
+
     currentAnalysis = {
-        nums: result.nums,
-        top: result.top,
-        kill: result.kill,
-        seed: seed_tm,
-        weights: wtm
-    }
-    savePrediction(result, latest);
-    renderTm(result, currentPeriod);
+        nums: hot15,
+        top: [],
+        kill: [],
+        seed: 0,
+        weights: {}
+    };
+
+    // ⭐ 保存历史
+    saveHot15History(hot15, latest, history);
+    renderTm(currentAnalysis, currentPeriod);
+
     if(forceUpdate){
         showToast("♻️ 已手动刷新分析结果");
     }
 }
 
-function fixMissingHistory(latest){
+function saveHot15History(hot15, latest, history) {
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-    let currentQishu = Number(latest.qishu)
-    let exists = new Set(list.map(i => Number(i.expect)));
-    // ⭐ 补最近10期（你可以改范围）
-    for(let i = currentQishu; i > currentQishu - 10; i--){
-        if(!exists.has(i)){
-            list.unshift({
-                expect: i,
-                date: latest.date,
-                nums: [],   // 没预测
-                top: [],
-                kill: [],
-                open: null,
-                hit: null,
-                hitNums: false,
-                hitTop: false
-            });
-        }
-    }
-    list.sort((a,b)=>b.expect - a.expect);
-    localStorage.setItem("tmHistory", JSON.stringify(list));
-}
-
-function savePrediction(result, latest){
-
-    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-
     let expect = Number(latest.qishu) + 1;
+
+    // 删除当前期旧记录
     list = list.filter(i => i.expect != expect);
-    let history = getHistory(JSON.parse(localStorage.getItem("cacheHistory") || "[]"));
-    let hot15 = getHot15(history);
 
+    // 插入当前期（带热号15码）
     list.unshift({
-        expect,
+        expect: expect,
         date: latest.date,
-        // nums: result.nums,
         nums: hot15,
-        top: result.top,
-        kill: result.kill,
-
+        zodiacNums: getHotZodiacs(history),
+        top: [],
+        kill: [],
         open: null,
         hit: null
     });
 
-    // 限制数量
-    if(list.length > 30){
-        list = list.slice(0,30);
+    // 补全最近10期（只有没记录的才补）
+    let exists = new Set(list.map(i => Number(i.expect)));
+    let currentQishu = Number(latest.qishu);
+    for (let i = currentQishu; i > currentQishu - 10; i--) {
+        if (!exists.has(i) && i !== expect) {
+            list.push({
+                expect: i,
+                date: latest.date,
+                nums: [],
+                top: [],
+                kill: [],
+                open: null,
+                hit: null
+            });
+        }
     }
 
+    list.sort((a, b) => b.expect - a.expect);
+    if (list.length > 30) list = list.slice(0, 30);
     localStorage.setItem("tmHistory", JSON.stringify(list));
 }
 
@@ -544,7 +364,8 @@ function updateResult(latest){
                 item.hitNums = item.nums.includes(openNum);
                 item.hitTop  = item.top.includes(openNum);
                 item.hit = item.hitTop;
-            }
+                // ⭐ 生肖命中
+                item.hitZodiac = item.zodiacNums ? item.zodiacNums.includes(getZodiac(openNum)) : false;            }
         }
     });
     if(!found){
@@ -552,12 +373,14 @@ function updateResult(latest){
             expect: qishu,
             date: latest.date,
             nums: [],
+            zodiacNums: [],
             top: [],
             kill: [],
             open: openNum,
             hit: false,
             hitNums: false,
-            hitTop: false
+            hitTop: false,
+            hitZodiac: false
         });
     }
     list.sort((a,b)=>b.expect - a.expect);
@@ -618,6 +441,18 @@ function getHot15(history) {
     return hot15.sort((a, b) => a - b);
 }
 
+function getHotZodiacs(history) {
+    let freq = {};
+    for (let p of history.slice(0, 50)) {
+        let num = p[6];
+        let zodiac = getZodiac(num);
+        if (!zodiac) continue;
+        freq[zodiac] = (freq[zodiac] || 0) + 1;
+    }
+    let sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+    return sorted.slice(0, 4);  // ⭐ 直接返回生肖名称数组
+}
+
 function renderTm(result, currentPeriod) {
     let top30 = [...(result.top || [])].sort((a, b) => a - b);
     let kill = [...(result.kill || [])].sort((a, b) => a - b);
@@ -628,21 +463,8 @@ function renderTm(result, currentPeriod) {
         history = getHistory(raw);
     } catch (e) {}
 
-    // 检查横财富缓存
-    let hengCaiCache = localStorage.getItem('hengCaiCache');
-    let finalNums = null;
-    if (hengCaiCache) {
-        try {
-            let data = JSON.parse(hengCaiCache);
-            let today = new Date().toISOString().split('T')[0];
-            if (data.date === today && data.finalNums && data.finalNums.length > 0) {
-                finalNums = data.finalNums;
-            }
-        } catch(e) {}
-    }
-
-    let label = finalNums ? `${finalNums.length}码` : `热号15码`;
-    let nums = finalNums || getHot15(history);
+    let nums = getHot15(history);
+    let label = `热号15码`;
 
     // renderTm 里，计算完 nums 后
     let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
@@ -659,15 +481,16 @@ function renderTm(result, currentPeriod) {
         localStorage.setItem("hot15History", JSON.stringify(hot15History));
     }
 
+    let zodiacNames = getHotZodiacs(history).join('、');
     document.getElementById("tmOut").innerHTML = `
     <div class="card tm">
     🔥 当前${currentPeriod}期分析<br><br>
-    🎯 推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
+    🎯 号码推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
+    🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
     </div>`;
 }
 
 async function generateBets(){
-    // 如果没有缓存的分析结果，先调用分析
     if(!currentAnalysis){
         await showTmAnalysis(false);
     }
@@ -676,36 +499,30 @@ async function generateBets(){
         return;
     }
 
-    let bets = shrinkBets(currentAnalysis.top, currentAnalysis.seed);
-
-    let html = `<div class="card tm">
-    💰 投注方案（选择其中一个或多个方案）<br><br>`;
-
-    bets.forEach((b,i)=>{
-        html += `方案${i+1}：${b.join(",")}<br>`;
-    });
-
-    document.getElementById("betOut").innerHTML = html;
-}
-
-function shrinkBets(top, seed){
-    let result=[];
-
-    for(let i=0;i<10;i++){
-
-        let arr=[...top];
-
-        // Fisher-Yates 洗牌（稳定版）
-        for(let j=arr.length-1;j>0;j--){
-            let k = Math.floor(seededRandom(seed + i*50 + j)*(j+1));
-            [arr[j], arr[k]] = [arr[k], arr[j]];
-        }
-
-        let pick = arr.slice(0,8).sort((a,b)=>a-b);
-        result.push(pick);
+    // ⭐ 直接用热号15码生成投注方案
+    let hot15 = currentAnalysis.nums || [];
+    if (hot15.length === 0) {
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 暂无推荐号码</div>`;
+        return;
     }
 
-    return result;
+    // 将15码拆分成3组，每组5码（或按你的需求分组）
+    let groups = [];
+    for (let i = 0; i < hot15.length; i += 5) {
+        groups.push(hot15.slice(i, i + 5));
+    }
+
+    let html = `<div class="card tm">💰 投注方案（${hot15.length}码）<br><br>`;
+
+    groups.forEach((g, idx) => {
+        html += `方案${idx+1}：${g.join(",")}<br>`;
+    });
+
+    // 也可以显示全部号码
+    html += `<br>📊 全部号码：${hot15.join(", ")}<br>`;
+    html += `</div>`;
+
+    document.getElementById("betOut").innerHTML = html;
 }
 
 // ===== 开奖 =====
@@ -735,11 +552,8 @@ async function loadHistory(){
         }).join(' ');
         html += `${i.qishu}期 (${i.date})<br>${display}<br><br>`;
     });
-
     html+=`</div>`;
-
     box.innerHTML = html;
-
     loading = false;
 }
 
@@ -755,30 +569,33 @@ async function showTmHistory(){
     box.innerHTML = "⏳ 正在加载历史投注结果...";
     await new Promise(r => setTimeout(r, 200));
 
-    let html = `<div class="card tm">
-    📊 历史投注结果 ${list.length}期<br>`;
-    // 统计50期热号15码命中率
-    let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
-    let hitCount = hot15History.filter(item => item.hit === true).length;
-    let total = hot15History.filter(item => item.open !== null).length;
-    let hitRate = total > 0 ? Math.round(hitCount / total * 100) : 0;
-
-    // html += `📊 热号15码历史命中率：${hitCount}/${total}（${hitRate}%）<br><br>`;
-
+    let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
     list.forEach(i=>{
-        html += `
-        <div style="margin-bottom:10px;">
-        ${i.expect}期<br>
-        📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>
-        🎯 推荐：<span style="word-break:break-all;">${i.nums.join(",")}</span><br>
-        🎲 开奖：<b style="color:#ff5722;">${i.open}</b><br>
-        ${i.nums.length === 0 ? "⚠️ 无预测" : ""}
-        ${i.hitNums ? "✅ 推荐命中" : ""}
-        ${i.hitTop ? "✅ Top命中" : ""}
-        ${i.nums.length > 0 && !i.hitNums && !i.hitTop ? "❌ 未中" : ""}
-        </div>
-        <hr>`;
+      html += `<div style="margin-bottom:10px;">${i.expect}期<br>`;
+      if (i.top && i.top.length > 0) {
+          html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
+      }
+      // 号码推荐高亮中奖号码
+      let numsHtml = (i.nums || []).map(n => {
+          return n === i.open ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${n}</b>` : n;
+      }).join(",");
+      html += `🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>`;
+      // 把 zodiacNums 转换成生肖名称
+      let openZodiac = getZodiac(i.open);
+      let zodiacNames = (i.zodiacNums || []);
+      let zodiacHtml = zodiacNames.map(z => {
+          return z === openZodiac ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
+      }).join('、') || '无';
+      html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
+      if (i.nums.length === 0) {
+          html += "⚠️ 无预测";
+      } else {
+          html += i.hitNums ? "✅ 推荐命中" : "❌ 推荐未中";
+          html += i.hitZodiac ? "✅ 生肖命中" : "❌ 生肖未中";
+      }
+      html += `</div><hr>`;
     });
+
     html += `</div>`;
     box.innerHTML = html;
 }
@@ -804,6 +621,26 @@ async function updateMarquee() {
     console.log("滚动条失败", e);
     document.getElementById("marqueeText").innerText = base;
   }
+}
+
+// 每天9点和10点自动刷新
+function scheduleRefresh() {
+    let now = new Date();
+    let next9 = new Date();
+    next9.setHours(9, 0, 0, 0);
+    let next10 = new Date();
+    next10.setHours(18, 0, 0, 0);
+
+    let targets = [next9, next10];
+    for (let t of targets) {
+        if (t <= now) t.setDate(t.getDate() + 1);
+    }
+    let next = targets[0] < targets[1] ? targets[0] : targets[1];
+    let delay = next - now;
+
+    setTimeout(() => {
+        location.reload();
+    }, delay);
 }
 
 async function init(){
@@ -833,6 +670,7 @@ async function init(){
 
 // ===== 初始化 =====
 init();
+scheduleRefresh();
 </script>
 
 </body>
