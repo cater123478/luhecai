@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩彩终极版</title>
+
+<style>
+body{font-family:Arial;max-width:650px;margin:auto;padding:15px;background:#f5f6fa;}
+h2{text-align:center;}
+
+.card{
+  background:#fff;
+  border-radius:12px;
+  padding:12px;
+  margin-top:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+.fixed{border-left:5px solid #4a90e2;}
+.best{border-left:5px solid #28a745;}
+.balance{border-left:5px solid #ff9800;}
+
+.btn{
+  display:block;width:100%;padding:14px;margin-top:10px;
+  border:none;border-radius:12px;font-size:16px;color:#fff;
+}
+
+.btn-rec{background:linear-gradient(45deg,#4caf50,#2ecc71);}
+.btn-fixed{background:linear-gradient(45deg,#2196f3,#42a5f5);}
+.btn-data{background:linear-gradient(45deg,#ff9800,#ffb74d);}
+</style>
+</head>
+
+<body>
+
+<h2>玩彩123</h2>
+
+<button class="btn btn-rec" onclick="generateRecommendations()">🎯 刷新推荐</button>
+<button class="btn btn-fixed" onclick="changeFixed()">🔄 换固定组</button>
+<button class="btn btn-data" onclick="loadHistory()">📥 获取开奖数据</button>
+
+<div id="fixedOut"></div>
+<div id="out"></div>
+<div id="history"></div>
+
+<script>
+
+// ===== 基础 =====
+const lockDays = 7;
+const today = new Date().toISOString().split("T")[0];
+
+let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
+let loading = false;
+const kjDataSize = 100;
+const hisKjDataSize = 50;
+
+// ===== 数据 =====
+async function fetchRaw(){
+    let res = await fetch("https://ls.kjkj.fit/kj");
+    return await res.json();
+}
+
+async function fetchData(){
+
+    let cache = localStorage.getItem("cacheHistory");
+    let cacheLastId = localStorage.getItem("cacheLastId");
+    if(cache){
+        backgroundUpdate(cacheLastId);
+        return JSON.parse(cache);
+    }
+    let json = await fetchRaw();
+    let latestId = json.data[0].id;
+    let data = json.data.slice(0,kjDataSize);
+    localStorage.setItem("cacheHistory", JSON.stringify(data));
+    localStorage.setItem("cacheLastId", latestId);
+    return data;
+}
+
+async function backgroundUpdate(oldId){
+    try{
+        let json = await fetchRaw();
+        let latestId = json.data[0].id;
+        if(oldId != latestId){
+            let data = json.data.slice(0,kjDataSize);
+            localStorage.setItem("cacheHistory", JSON.stringify(data));
+            localStorage.setItem("cacheLastId", latestId);
+            console.log("✅ 已自动更新最新开奖数据");
+        }
+    }catch(e){
+        console.log("后台更新失败", e);
+    }
+}
+
+// ===== 权重 =====
+function calcWeights(history){
+    let freq=Array(50).fill(0), miss=Array(50).fill(0);
+
+    history.forEach((p,idx)=>{
+        p.forEach(n=>{
+            freq[n]++;
+            miss[n]=idx;
+        });
+    });
+
+    let maxF=Math.max(...freq);
+
+    return freq.map((f,i)=>{
+        let hot=f/maxF;
+        let cold=miss[i]/history.length;
+        return 0.6 + hot*0.6 + cold*0.6 + Math.random()*0.3;
+    });
+}
+
+function killNumbers(history){
+
+    let freq=Array(50).fill(0);
+    let last=Array(50).fill(999);
+
+    history.forEach((p,idx)=>{
+        let tm = p[6];
+        freq[tm]++;
+        last[tm] = Math.min(last[tm], idx);
+    });
+
+    let killSet = new Set();
+
+    for(let i=1;i<=49;i++){
+
+        if(last[i] > 80) killSet.add(i);
+        if(freq[i] <= 1) killSet.add(i);
+        if(last[i] > 20 && freq[i] < 3) killSet.add(i);
+    }
+
+    return killSet;
+}
+
+function calcTmWeights(history){
+
+    let freq=Array(50).fill(0);
+    let recent=Array(50).fill(0);
+    let last=Array(50).fill(999);
+
+    history.forEach((p,idx)=>{
+        let tm = p[6];
+        freq[tm]++;
+        last[tm] = Math.min(last[tm], idx);
+    });
+
+    history.slice(0,15).forEach((p,idx)=>{
+        let tm = p[6];
+        recent[tm] += (15 - idx);
+    });
+
+    let maxF=Math.max(...freq);
+    let maxR=Math.max(...recent);
+
+    let killSet = killNumbers(history);
+
+    let weights=[];
+
+    for(let i=1;i<=49;i++){
+
+        if(killSet.has(i)){
+            weights[i] = 0.01;
+            continue;
+        }
+
+        let hot = freq[i]/(maxF||1);
+        let boom = recent[i]/(maxR||1);
+        let gap = last[i]/history.length;
+
+        weights[i] = 0.5
+            + hot*0.6
+            + boom*1.0
+            + gap*0.4
+            + Math.random()*0.2;
+    }
+
+    return weights;
+}
+
+function genTmUltimate(weights){
+
+    let arr=[];
+
+    for(let i=1;i<=49;i++){
+        arr.push({n:i,w:weights[i]});
+    }
+
+    arr.sort((a,b)=>b.w-a.w);
+
+    let top = arr.slice(0,12).map(i=>i.n);
+
+    let res=[];
+    while(res.length<6){
+        let x = top[Math.floor(Math.random()*top.length)];
+        if(!res.includes(x)) res.push(x);
+    }
+
+    return res.sort((a,b)=>a-b);
+}
+
+// ===== 工具 =====
+function pick(w,used){
+    let pool=[];
+    for(let i=1;i<=49;i++){
+        if(!used.includes(i)){
+            let k=Math.floor(w[i]*10);
+            for(let j=0;j<k;j++) pool.push(i);
+        }
+    }
+    return pool[Math.floor(Math.random()*pool.length)];
+}
+
+function genOne(w,c){
+    let n=[];
+    while(n.length<c){
+        let x=pick(w,n);
+        if(!n.includes(x)) n.push(x);
+    }
+    return n.sort((a,b)=>a-b);
+}
+
+// ===== 固定组 =====
+async function initFixed(force=false){
+    let history = (await fetchData()).filter(i => i && i.num).map(i => i.num.split(',').map(Number));
+    let w=calcWeights(history);
+
+    if(!force && fixedData.t){
+        renderFixed();
+        return;
+    }
+
+    let t,z;
+
+    if(fixedData.t){
+        // let keep = fixedData.t.slice(0,3); // 简单稳定
+        let keep = selectKeep(fixedData.t, history);
+        while(keep.length<6){
+            let x=pick(w,keep);
+            if(!keep.includes(x)) keep.push(x);
+        }
+        t=keep.sort((a,b)=>a-b);
+    }else{
+        // t=genOne(w,6);
+        let wtm = calcTmWeights(history); // ⭐新增
+        t = genTmUltimate(wtm);       // ⭐替换
+    }
+
+    z=genOne(w,4);
+
+    let expire = new Date();
+    expire.setDate(expire.getDate() + lockDays);
+
+    fixedData = {
+        t,
+        z,
+        start: today,
+        expire: expire.toISOString().split("T")[0]
+    };
+
+    localStorage.setItem("fixedData", JSON.stringify(fixedData));
+
+    renderFixed();
+}
+
+function selectKeep(oldNums, history){
+    let freq={};
+
+    oldNums.forEach(n=>{
+        freq[n]=0;
+        history.forEach(p=>{
+            if(p.includes(n)) freq[n]++;
+        });
+    });
+
+    return oldNums
+        .sort((a,b)=>freq[b]-freq[a])
+        .slice(0,3); // 保留最活跃3个
+}
+
+function renderFixed(){
+    if(!fixedData || !fixedData.t){
+        document.getElementById("fixedOut").innerHTML="";
+        return;
+    }
+
+    let now = new Date();
+    let end = fixedData.expire ? new Date(fixedData.expire) : null;
+
+    let diff = end ? Math.ceil((end - now) / (1000*60*60*24)) : "-";
+    if(diff < 0) diff = 0;
+
+    document.getElementById("fixedOut").innerHTML = `
+    <div class="card fixed">
+    🔵 固定追号组（剩余 ${diff} 天）<br>
+    特码：${fixedData.t.join(",")}<br>
+    正码：${fixedData.z.join(",")}
+    </div>`;
+}
+
+async function changeFixed(){
+    if(confirm("确认更换固定组？将重新锁定7天")){
+        await initFixed(true);
+    }
+}
+
+// ===== 推荐组（专业版🔥）=====
+function scorePro(nums, history){
+    let s = 0;
+
+    // 奇偶（偏离越多扣分）
+    let odd = nums.filter(n=>n%2).length;
+    s += 20 - Math.abs(5 - odd) * 3;
+
+    // 大小
+    let small = nums.filter(n=>n<=24).length;
+    s += 20 - Math.abs(5 - small) * 3;
+
+    // 跨度
+    let span = Math.max(...nums) - Math.min(...nums);
+    s += span;
+
+    // 分散度
+    let sorted = [...nums].sort((a,b)=>a-b);
+    let gaps=[];
+    for(let i=1;i<sorted.length;i++){
+        gaps.push(sorted[i]-sorted[i-1]);
+    }
+    let avgGap = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+    s += avgGap * 5;
+
+    // 🔥 历史拟合（关键改）
+    let similarity=0;
+    history.forEach(p=>{
+        let hit = nums.filter(n=>p.includes(n)).length;
+        similarity += hit;
+    });
+
+    // 惩罚太像 or 太不像
+    let target = 50;
+    s += 30 - Math.abs(target - similarity) * 0.5;
+
+    return Math.round(s);
+}
+
+async function generateRecommendations(){
+    let history = (await fetchData()).filter(i => i && i.num).map(i => i.num.split(',').map(Number));
+    let w=calcWeights(history);
+
+    let pool=[];
+
+    for(let i=0;i<300;i++){
+        let wtm = calcTmWeights(history); // ⭐新增
+        let t = genTmUltimate(wtm);       // ⭐替换
+        let z=genOne(w,4);
+
+        let nums=t.concat(z);
+        let sc=scorePro(nums, history);
+
+        pool.push({t,z,sc});
+    }
+
+    pool.sort((a,b)=>b.sc-a.sc);
+
+    let best=pool[0];
+    let second=pool[1];
+
+    document.getElementById("out").innerHTML=`
+    <div class="card best">
+    🟢 最优推荐（${best.sc}分）<br>
+    特码：${best.t.join(",")}<br>
+    正码：${best.z.join(",")}
+    </div>
+
+    <div class="card balance">
+    🟡 次优推荐（${second.sc}分）<br>
+    特码：${second.t.join(",")}<br>
+    正码：${second.z.join(",")}
+    </div>
+    `;
+}
+
+// ===== 开奖 =====
+async function loadHistory(){
+    if(loading) return;
+    loading = true;
+
+    let box = document.getElementById("history");
+    box.innerHTML = "⏳ 正在加载开奖数据...";
+    await new Promise(r => setTimeout(r, 300));
+    let list = await fetchData();
+
+    let html=`<div class="card"><b>📊 最近开奖 ${hisKjDataSize}期</b><br>`;
+
+    list.slice(0,hisKjDataSize).forEach(i=>{
+        html += `${i.qishu}期 (${i.date})<br>${i.num}<br><br>`;
+    });
+
+    html+=`</div>`;
+
+    box.innerHTML = html;
+
+    loading = false;
+}
+
+// ===== 初始化 =====
+initFixed();
+generateRecommendations();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>生肖·波色 投注工具</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #f5f7fb; padding: 16px 12px 40px; color: #1e293b; }
+        .container { max-width: 480px; margin: 0 auto; width: 100%; }
+        h1 { font-size: 1.6rem; font-weight: 600; margin-bottom: 12px; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+        h1 small { font-size: 0.9rem; font-weight: 400; color: #64748b; margin-left: auto; }
+        .card { background: #fff; border-radius: 20px; padding: 16px 14px; margin-bottom: 16px; border: 1px solid #e9edf2; }
+        .card-title { font-weight: 500; font-size: 0.9rem; color: #475569; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .card-title span { background: #eef2f6; padding: 0 10px; border-radius: 30px; font-size: 0.75rem; color: #334155; }
+        .tag-group { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag {
+            background: #f1f4f9; padding: 4px 10px; border-radius: 30px; font-size: 0.8rem;
+            font-weight: 500; color: #1e293b; border: 1px solid transparent;
+            transition: all 0.15s; cursor: pointer; user-select: none;
+            display: inline-flex; align-items: center; gap: 3px;
+        }
+        .tag.active { background: #1e293b; color: white; border-color: #1e293b; }
+        .tag .tag-mode {
+            font-size: 0.5rem; font-weight: 700; background: rgba(0,0,0,0.1);
+            padding: 0 5px; border-radius: 10px; cursor: pointer;
+            letter-spacing: 0.3px;
+        }
+        .tag.active .tag-mode { background: rgba(255,255,255,0.2); }
+        .tag .tag-amount {
+            font-size: 0.65rem; background: rgba(0,0,0,0.08); padding: 0 6px;
+            border-radius: 30px; font-weight: 600; cursor: pointer;
+            min-width: 28px; text-align: center;
+        }
+        .tag.active .tag-amount { background: rgba(255,255,255,0.2); }
+        .number-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 12px; }
+        .num-btn {
+            aspect-ratio: 1/1; border-radius: 40px; border: 1px solid #dce1e8;
+            background: white; font-size: 0.9rem; font-weight: 500; color: #0f172a;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+        }
+        .num-btn.selected { background: #0f172a; color: white; border-color: #0f172a; }
+        .num-btn.disabled { opacity: 0.3; pointer-events: none; }
+        .summary-area { background: #f1f5f9; border-radius: 18px; padding: 12px 14px; margin-top: 8px; }
+        .group-row {
+            display: flex; align-items: center; gap: 6px; padding: 3px 0;
+            border-bottom: 1px dashed #e2e8f0; font-size: 0.85rem; flex-wrap: wrap;
+        }
+        .group-row:last-child { border-bottom: none; }
+        .group-label { font-weight: 700; color: #0f172a; min-width: 32px; font-size: 0.9rem; }
+        .group-nums {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: #1e293b;
+    flex: 1;
+    min-width: 100px;
+    word-break: break-all;
+    line-height: 1.8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 4px;
+}
+        .group-nums .num-chip {
+    background: white;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    display: inline-block;
+    font-size: 0.82rem;
+}
+        .group-total { font-weight: 600; color: #475569; font-size: 0.8rem; background: #e9edf2; padding: 0 10px; border-radius: 30px; white-space: nowrap; }
+        .total { font-weight: 700; font-size: 1.2rem; color: #0f172a; margin-top: 10px; text-align: right; border-top: 2px solid #cbd5e1; padding-top: 10px; }
+        .actions { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .btn {
+            background: white; border: 1px solid #dce1e8; padding: 10px 22px;
+            border-radius: 40px; font-weight: 500; color: #1e293b; font-size: 0.95rem;
+            cursor: pointer; flex: 1 0 auto; text-align: center;
+        }
+        .btn-primary { background: #0f172a; border-color: #0f172a; color: white; }
+        .btn-danger { border-color: #e2e8f0; background: #fef2f2; color: #b91c1c; }
+        .btn-sm { padding: 6px 14px; font-size: 0.8rem; flex: 0 0 auto; }
+        .empty-tip { color: #94a3b8; font-size: 0.9rem; padding: 12px 0; text-align: center; }
+        .badge { background: #e9edf2; border-radius: 30px; padding: 2px 10px; font-size: 0.7rem; font-weight: 500; }
+        .toggle-grid-btn {
+            background: #eef2f6; border: 1px solid #dce1e8; padding: 6px 16px;
+            border-radius: 40px; font-size: 0.8rem; font-weight: 500; color: #1e293b;
+            cursor: pointer; margin-left: auto;
+        }
+        .hidden-grid .number-grid { display: none; }
+        .auto-selected-hint { font-size: 0.75rem; color: #64748b; margin-top: 6px; padding: 4px 8px; background: #f1f5f9; border-radius: 20px; display: inline-block; }
+        .amount-popup {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+            align-items: center; justify-content: center; z-index: 999;
+        }
+        .amount-popup.show { display: flex; }
+        .amount-popup-content {
+            background: white; border-radius: 32px; padding: 30px 24px 24px;
+            width: 320px; max-width: 90%; text-align: center;
+        }
+        .amount-popup-content h3 { font-size: 1.2rem; margin-bottom: 16px; color: #0f172a; }
+        .amount-popup-content .popup-label { font-size: 0.9rem; color: #475569; margin-bottom: 8px; }
+        .big-number-input { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0 20px; }
+        .big-number-input button {
+            width: 52px; height: 52px; border-radius: 40px; border: none;
+            background: #e9edf2; font-size: 1.8rem; font-weight: 600; color: #1e293b;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .big-number-input input {
+            font-size: 2.2rem; font-weight: 700; width: 120px; text-align: center;
+            border: none; border-bottom: 3px solid #dce1e8; background: transparent;
+            outline: none; padding: 4px 8px;
+        }
+        .big-number-input input:focus { border-bottom-color: #0f172a; }
+        .popup-actions { display: flex; gap: 12px; margin-top: 8px; }
+        .popup-actions .btn { flex: 1; padding: 12px; font-size: 1rem; }
+        .popup-actions .btn-confirm { background: #0f172a; color: white; border-color: #0f172a; }
+        .popup-actions .btn-cancel { background: #f1f4f9; border-color: #dce1e8; }
+        .footnote { font-size: 0.7rem; color: #94a3b8; text-align: center; margin-top: 20px; }
+        .toast {
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: #0f172a; color: white; padding: 10px 24px; border-radius: 40px;
+            font-size: 0.85rem; font-weight: 500; z-index: 1000;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .copy-all-btn { background: #e9edf2; border: none; padding: 2px 10px; border-radius: 30px; font-size: 0.7rem; color: #475569; cursor: pointer; margin-left: 8px; }
+        .popup-amount::-webkit-outer-spin-button, .popup-amount::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .popup-amount[type="number"] { -moz-appearance: textfield; }
+
+        /* 新增：号码金额选择器 */
+        .number-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .number-toolbar input {
+            width: 50px;
+            padding: 4px 4px;
+            border-radius: 30px;
+            border: 1px solid #dce1e8;
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+            outline: none;
+            background: white;
+        }
+        .number-toolbar input:focus {
+            border-color: #0f172a;
+        }
+        .number-toolbar .btn-set {
+            background: #0f172a;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .number-toolbar .btn-set:active {
+            transform: scale(0.95);
+        }
+        .number-toolbar .btn-set:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .toggle-grid-btn {
+            background: #eef2f6;
+            border: 1px solid #dce1e8;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #1e293b;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .toggle-grid-btn:active {
+            background: #dce1e8;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎯 投注面板 <small>生肖·波色</small></h1>
+
+    <div class="card">
+        <div class="card-title">📌 筛选条件 <span>点击 [平/特] 切换模式</span></div>
+
+        <div class="card-title" style="margin-top: 6px;">🐭 生肖</div>
+        <div class="tag-group" id="shengxiaoGroup"></div>
+
+        <div class="card-title" style="margin-top: 12px;">🔴 波色</div>
+        <div class="tag-group" id="boseGroup"></div>
+
+        <div class="card-title" style="margin-top: 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span>🔢 号码 (1-49) <span id="selectedCountBadge" class="badge">0个</span></span>
+            <div class="number-toolbar">
+                <input type="number" id="numPriceInput" value="5" min="1" step="1">
+                <button class="btn-set" id="setNumPriceBtn">设置</button>
+                <button class="toggle-grid-btn" id="toggleGridBtn">📊</button>
+            </div>
+        </div>
+        <div id="numberGridWrapper" class="hidden-grid">
+            <div class="number-grid" id="numberGrid"></div>
+            <div class="auto-selected-hint" id="autoSelectHint">💡 选择标签自动匹配号码</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="flex-row">
+            <button class="btn btn-danger" id="clearAllBtn" style="flex:1;">🗑️ 清空所有</button>
+            <button class="btn" id="clearBetsBtn" style="flex:1;">清空投注</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>📋 投注明细 <span id="betCountBadge" class="badge">0注</span></span>
+            <button class="copy-all-btn" id="copyAllBtn">📋 复制全部</button>
+        </div>
+        <div id="betDetailList" class="summary-area">
+            <div class="empty-tip">暂无投注，选择标签自动生成</div>
+        </div>
+        <div class="total" id="totalAmount">💰 总额：0.00 元</div>
+        <div class="actions">
+            <button class="btn btn-primary" id="generateBtn">🔄 刷新明细</button>
+        </div>
+    </div>
+    <div class="footnote">点击标签名切换选中 · 点击 [平/特] 切换模式 · 点击金额数字设置</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="amount-popup" id="amountPopup">
+    <div class="amount-popup-content">
+        <h3 id="popupTitle">设置金额</h3>
+        <div class="popup-label" id="popupLabel">生肖 · 鼠</div>
+        <div class="big-number-input">
+            <button id="popupDec">−</button>
+            <input type="number" class="popup-amount" id="popupAmount" value="5" min="1">
+            <button id="popupInc">+</button>
+        </div>
+        <div class="popup-actions">
+            <button class="btn btn-cancel" id="popupCancel">取消</button>
+            <button class="btn btn-confirm" id="popupConfirm">确认</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const SHENGXIAO_MAP = {
+        '马': [1,13,25,37,49], '蛇': [2,14,26,38], '龙': [3,15,27,39],
+        '兔': [4,16,28,40], '虎': [5,17,29,41], '牛': [6,18,30,42],
+        '鼠': [7,19,31,43], '猪': [8,20,32,44], '狗': [9,21,33,45],
+        '鸡': [10,22,34,46], '猴': [11,23,35,47], '羊': [12,24,36,48]
+    };
+    const BOSE_MAP = {
+        '红波': [1,2,7,8,12,13,18,19,23,24,29,30,34,35,40,45,46],
+        '蓝波': [3,4,9,10,14,15,20,25,26,31,36,37,41,42,47,48],
+        '绿波': [5,6,11,16,17,21,22,27,28,32,33,38,39,43,44,49]
+    };
+
+    // 每个标签独立存储 { mode, amount }
+    const configMap = new Map();
+
+    // 每个号码独立金额存储（用于特码模式）
+    const numberPriceMap = new Map();
+
+    function getConfig(type, key) {
+        const k = type + '_' + key;
+        if (!configMap.has(k)) configMap.set(k, { mode: '特码', amount: 5 });
+        return configMap.get(k);
+    }
+
+    function setMode(type, key, mode) {
+        const c = getConfig(type, key);
+        c.mode = mode;
+        configMap.set(type + '_' + key, c);
+    }
+
+    function setAmount(type, key, val) {
+        const c = getConfig(type, key);
+        c.amount = Math.max(1, Math.min(99999, val));
+        configMap.set(type + '_' + key, c);
+    }
+
+    // 号码金额操作
+    function getNumberPrice(num) {
+        return numberPriceMap.has(num) ? numberPriceMap.get(num) : 5;
+    }
+
+    function setNumberPrice(num, val) {
+        numberPriceMap.set(num, Math.max(1, Math.min(99999, val)));
+    }
+
+    let selectedShengxiao = new Set();
+    let selectedBose = new Set();
+    let selectedNumbers = new Set();
+    let gridVisible = false;
+
+    const $ = id => document.getElementById(id);
+    const shengxiaoGroup = $('shengxiaoGroup');
+    const boseGroup = $('boseGroup');
+    const numberGrid = $('numberGrid');
+    const numberGridWrapper = $('numberGridWrapper');
+    const toggleGridBtn = $('toggleGridBtn');
+    const selectedCountBadge = $('selectedCountBadge');
+    const selectedNumsHint = $('selectedNumsHint');
+    const numPriceInput = $('numPriceInput');
+    const setNumPriceBtn = $('setNumPriceBtn');
+    const betDetailList = $('betDetailList');
+    const totalAmountEl = $('totalAmount');
+    const betCountBadge = $('betCountBadge');
+    const autoSelectHint = $('autoSelectHint');
+    const clearAllBtn = $('clearAllBtn');
+    const clearBetsBtn = $('clearBetsBtn');
+    const generateBtn = $('generateBtn');
+    const copyAllBtn = $('copyAllBtn');
+    const toast = $('toast');
+
+    const popup = $('amountPopup');
+    const popupTitle = $('popupTitle');
+    const popupLabel = $('popupLabel');
+    const popupAmount = $('popupAmount');
+    const popupDec = $('popupDec');
+    const popupInc = $('popupInc');
+    const popupCancel = $('popupCancel');
+    const popupConfirm = $('popupConfirm');
+    let popupTarget = null;
+    let toastTimer = null;
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+    }
+
+    function getAutoMatchedNumbers() {
+        if (selectedShengxiao.size === 0 && selectedBose.size === 0) return [];
+        let result = new Set();
+        for (let k of selectedShengxiao) (SHENGXIAO_MAP[k] || []).forEach(n => result.add(n));
+        for (let k of selectedBose) (BOSE_MAP[k] || []).forEach(n => result.add(n));
+        return Array.from(result).sort((a,b) => a-b);
+    }
+
+    function applyAutoMatch() {
+        selectedNumbers = new Set(getAutoMatchedNumbers());
+        updateNumberGrid();
+        updateBetSummary();
+        updateSelectedCount();
+        updateSelectedHint();
+    }
+
+    function updateNumberGrid() {
+        numberGrid.innerHTML = '';
+        const auto = getAutoMatchedNumbers();
+        const autoSet = new Set(auto);
+        for (let i = 1; i <= 49; i++) {
+            const btn = document.createElement('div');
+            btn.className = 'num-btn' + (selectedNumbers.has(i) ? ' selected' : '');
+            btn.textContent = i;
+            if (auto.length > 0 && !autoSet.has(i)) btn.classList.add('disabled');
+            btn.addEventListener('click', function() {
+                const num = parseInt(this.textContent);
+                if (auto.length > 0 && !autoSet.has(num)) return;
+                if (selectedNumbers.has(num)) selectedNumbers.delete(num);
+                else selectedNumbers.add(num);
+                updateNumberGrid();
+                updateBetSummary();
+                updateSelectedCount();
+                updateSelectedHint();
+            });
+            numberGrid.appendChild(btn);
+        }
+        updateSelectedCount();
+        updateSelectedHint();
+    }
+
+    function updateSelectedCount() {
+        selectedCountBadge.textContent = selectedNumbers.size + '个';
+        autoSelectHint.textContent = selectedNumbers.size > 0 ? '✅ 已匹配 ' + selectedNumbers.size + ' 个号码' : '💡 选择标签自动匹配号码';
+    }
+
+    function updateSelectedHint() {
+        // 简化：不再显示选中号码预览，只更新按钮状态
+        var arr = Array.from(selectedNumbers);
+        setNumPriceBtn.disabled = arr.length === 0;
+    }
+
+    // 设置选中号码的金额
+    function setSelectedNumbersPrice() {
+        const arr = Array.from(selectedNumbers);
+        if (arr.length === 0) {
+            showToast('请先选中号码');
+            return;
+        }
+        const val = parseInt(numPriceInput.value);
+        if (isNaN(val) || val < 1) {
+            showToast('请输入有效金额 (≥1)');
+            return;
+        }
+        for (let num of arr) {
+            setNumberPrice(num, val);
+        }
+        updateBetSummary();
+        showToast('已为 ' + arr.length + ' 个号码设置金额 ' + val + ' 元');
+    }
+
+    function getNumberGroups(num) {
+        let groups = [];
+        for (let k of selectedShengxiao) {
+            if ((SHENGXIAO_MAP[k] || []).includes(num)) groups.push({ type: 'sx', key: k, label: k });
+        }
+        for (let k of selectedBose) {
+            if ((BOSE_MAP[k] || []).includes(num)) groups.push({ type: 'bs', key: k, label: k });
+        }
+        return groups;
+    }
+
+    function pad(n) { return n.toString().padStart(2, '0'); }
+
+    function updateBetSummary() {
+        var arr = Array.from(selectedNumbers).sort(function(a, b) { return a - b; });
+        betCountBadge.textContent = arr.length + '注';
+
+        if (arr.length === 0) {
+            betDetailList.innerHTML = '<div class="empty-tip">暂无投注，选择标签自动生成</div>';
+            totalAmountEl.textContent = '💰 总额：0.00 元';
+            betDetailList.dataset.copyText = '';
+            return;
+        }
+
+        var groupMap = new Map();
+        for (var i = 0; i < arr.length; i++) {
+            var num = arr[i];
+            var groups = getNumberGroups(num);
+            if (groups.length === 0) {
+                var key = 'other_其他';
+                if (!groupMap.has(key)) groupMap.set(key, { label: '其他', type: 'other', key: '其他', nums: [] });
+                groupMap.get(key).nums.push(num);
+            } else {
+                var g = groups[0];
+                var key = g.type + '_' + g.key;
+                if (!groupMap.has(key)) groupMap.set(key, { label: g.label, type: g.type, key: g.key, nums: [] });
+                groupMap.get(key).nums.push(num);
+            }
+        }
+
+        var html = '<div class="summary-group">';
+        var total = 0;
+        var copyText = '';
+
+        for (var entry of groupMap) {
+            var group = entry[1];
+            var nums = group.nums.sort(function(a, b) { return a - b; });
+            var count = nums.length;
+            var config = getConfig(group.type, group.key);
+            var configAmount = config.amount;
+            var isPing = config.mode === '平码';
+
+            var groupTotal, display;
+
+            if (isPing) {
+                groupTotal = configAmount;
+                display = configAmount + '元';
+                copyText += group.label + ' ' + nums.map(pad).join(',') + ' ' + groupTotal + '元\n';
+            } else {
+                groupTotal = 0;
+                var prices = [];
+                for (var j = 0; j < nums.length; j++) {
+                    var p = getNumberPrice(nums[j]);
+                    groupTotal += p;
+                    prices.push(p);
+                }
+                var allSame = true;
+                var firstPrice = prices[0];
+                for (var k = 0; k < prices.length; k++) {
+                    if (prices[k] !== firstPrice) { allSame = false; break; }
+                }
+                if (allSame && count > 0) {
+                    display = firstPrice + '×' + count + '=' + groupTotal + '元';
+                    copyText += group.label + ' ' + nums.map(pad).join(',') + ' ' + firstPrice + '×' + count + '=' + groupTotal + '元\n';
+                } else {
+                    display = prices.join('+') + '=' + groupTotal + '元';
+                    var detailParts = [];
+                    for (var m = 0; m < nums.length; m++) {
+                        detailParts.push(pad(nums[m]) + '(' + getNumberPrice(nums[m]) + '元)');
+                    }
+                    copyText += group.label + ' ' + detailParts.join(',') + ' 合计' + groupTotal + '元\n';
+                }
+            }
+            total += groupTotal;
+
+            // 关键改动：号码用 chip 包装，自动换行
+            var chips = nums.map(function(n) { return '<span class="num-chip">' + pad(n) + '</span>'; }).join('');
+
+            html += '<div class="group-row">';
+            html += '<span class="group-label">' + group.label + '</span>';
+            html += '<span class="group-nums">' + chips + '</span>';
+            html += '<span class="group-total">' + display + '</span>';
+            html += '</div>';
+        }
+
+        copyText += '\n总额：' + total.toFixed(2) + ' 元';
+        html += '</div>';
+        betDetailList.innerHTML = html;
+        totalAmountEl.textContent = '💰 总额：' + total.toFixed(2) + ' 元';
+        betDetailList.dataset.copyText = copyText;
+    }
+
+    function copyAll() {
+        const text = betDetailList.dataset.copyText || '';
+        if (!text) { showToast('暂无投注内容'); return; }
+        navigator.clipboard.writeText(text).then(() => showToast('✅ 已复制')).catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('✅ 已复制');
+        });
+    }
+
+    function renderTags() {
+        // 生肖
+        shengxiaoGroup.innerHTML = '';
+        for (let key of Object.keys(SHENGXIAO_MAP)) {
+            const cfg = getConfig('sx', key);
+            const span = document.createElement('span');
+            span.className = 'tag small' + (selectedShengxiao.has(key) ? ' active' : '');
+
+            const label = document.createElement('span');
+            label.textContent = key;
+            label.style.cursor = 'pointer';
+
+            const modeBtn = document.createElement('span');
+            modeBtn.className = 'tag-mode';
+            modeBtn.textContent = cfg.mode === '平码' ? '平' : '特';
+            modeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const newMode = cfg.mode === '平码' ? '特码' : '平码';
+                setMode('sx', key, newMode);
+                renderTags();
+                updateBetSummary();
+            });
+
+            const amtSpan = document.createElement('span');
+            amtSpan.className = 'tag-amount';
+            amtSpan.textContent = cfg.amount + (cfg.mode === '平码' ? '元' : '元/个');
+            amtSpan.addEventListener('click', function(e) {
+                e.stopPropagation();
+                popupTarget = { type: 'sx', key: key };
+                const typeMap = { sx: '生肖', bs: '波色' };
+                popupTitle.textContent = '设置 ' + (typeMap['sx'] || '') + ' 金额';
+                popupLabel.textContent = (typeMap['sx'] || '') + ' · ' + key + ' (' + cfg.mode + '模式)';
+                popupAmount.value = cfg.amount;
+                popup.classList.add('show');
+                setTimeout(() => { popupAmount.focus(); popupAmount.select(); }, 100);
+            });
+
+            span.appendChild(label);
+            span.appendChild(modeBtn);
+            span.appendChild(amtSpan);
+
+            span.addEventListener('click', function(e) {
+                if (e.target.classList.contains('tag-amount')) return;
+                if (e.target.classList.contains('tag-mode')) return;
+                if (selectedShengxiao.has(key)) selectedShengxiao.delete(key);
+                else selectedShengxiao.add(key);
+                renderTags();
+                applyAutoMatch();
+            });
+            shengxiaoGroup.appendChild(span);
+        }
+
+        // 波色
+        boseGroup.innerHTML = '';
+        for (let key of Object.keys(BOSE_MAP)) {
+            const cfg = getConfig('bs', key);
+            const span = document.createElement('span');
+            span.className = 'tag small' + (selectedBose.has(key) ? ' active' : '');
+
+            const label = document.createElement('span');
+            label.textContent = key;
+            label.style.cursor = 'pointer';
+
+            const modeBtn = document.createElement('span');
+            modeBtn.className = 'tag-mode';
+            modeBtn.textContent = cfg.mode === '平码' ? '平' : '特';
+            modeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const newMode = cfg.mode === '平码' ? '特码' : '平码';
+                setMode('bs', key, newMode);
+                renderTags();
+                updateBetSummary();
+            });
+
+            const amtSpan = document.createElement('span');
+            amtSpan.className = 'tag-amount';
+            amtSpan.textContent = cfg.amount + (cfg.mode === '平码' ? '元' : '元/个');
+            amtSpan.addEventListener('click', function(e) {
+                e.stopPropagation();
+                popupTarget = { type: 'bs', key: key };
+                const typeMap = { sx: '生肖', bs: '波色' };
+                popupTitle.textContent = '设置 ' + (typeMap['bs'] || '') + ' 金额';
+                popupLabel.textContent = (typeMap['bs'] || '') + ' · ' + key + ' (' + cfg.mode + '模式)';
+                popupAmount.value = cfg.amount;
+                popup.classList.add('show');
+                setTimeout(() => { popupAmount.focus(); popupAmount.select(); }, 100);
+            });
+
+            span.appendChild(label);
+            span.appendChild(modeBtn);
+            span.appendChild(amtSpan);
+
+            span.addEventListener('click', function(e) {
+                if (e.target.classList.contains('tag-amount')) return;
+                if (e.target.classList.contains('tag-mode')) return;
+                if (selectedBose.has(key)) selectedBose.delete(key);
+                else selectedBose.add(key);
+                renderTags();
+                applyAutoMatch();
+            });
+            boseGroup.appendChild(span);
+        }
+    }
+
+    // 弹窗事件
+    popupDec.addEventListener('click', function() {
+        let v = parseInt(popupAmount.value) || 1;
+        popupAmount.value = Math.max(1, v - 1);
+    });
+    popupInc.addEventListener('click', function() {
+        let v = parseInt(popupAmount.value) || 1;
+        popupAmount.value = v + 1;
+    });
+    popupCancel.addEventListener('click', function() { popup.classList.remove('show'); popupTarget = null; });
+    popupConfirm.addEventListener('click', function() {
+        if (!popupTarget) return;
+        const val = parseInt(popupAmount.value);
+        if (isNaN(val) || val < 1) { showToast('请输入有效金额 (≥1)'); return; }
+        setAmount(popupTarget.type, popupTarget.key, val);
+        renderTags();
+        updateBetSummary();
+        popup.classList.remove('show');
+        popupTarget = null;
+    });
+    popup.addEventListener('click', function(e) {
+        if (e.target === popup) { popup.classList.remove('show'); popupTarget = null; }
+    });
+
+    // 清空
+    clearAllBtn.addEventListener('click', function() {
+        selectedShengxiao.clear();
+        selectedBose.clear();
+        selectedNumbers.clear();
+        numberPriceMap.clear();
+        renderTags();
+        applyAutoMatch();
+    });
+    clearBetsBtn.addEventListener('click', function() {
+        selectedNumbers.clear();
+        updateNumberGrid();
+        updateBetSummary();
+        updateSelectedCount();
+        updateSelectedHint();
+    });
+    generateBtn.addEventListener('click', updateBetSummary);
+    toggleGridBtn.addEventListener('click', function() {
+        gridVisible = !gridVisible;
+        numberGridWrapper.classList.toggle('hidden-grid');
+        this.textContent = gridVisible ? '📊 隐藏号码' : '📊 显示号码';
+    });
+    copyAllBtn.addEventListener('click', copyAll);
+
+    // 设置选中号码金额
+    setNumPriceBtn.addEventListener('click', setSelectedNumbersPrice);
+
+    // 回车快捷设置
+    numPriceInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            setSelectedNumbersPrice();
+        }
+    });
+
+    numberGridWrapper.classList.add('hidden-grid');
+    toggleGridBtn.textContent = '📊 显示号码';
+    setNumPriceBtn.disabled = true;
+
+    renderTags();
+    applyAutoMatch();
+})();
+</script>
+</body>
+</html>

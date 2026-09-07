@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩彩小助手</title>
+
+<style>
+body{font-family:Arial;max-width:650px;margin:auto;padding:15px;background:#f5f6fa;}
+h2{text-align:center;}
+
+.card{
+  background:#fff;
+  border-radius:12px;
+  padding:12px;
+  margin-top:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+.fixed{border-left:5px solid #4a90e2;}
+.best{border-left:5px solid #28a745;}
+.balance{border-left:5px solid #ff9800;}
+.tm{border-left:5px solid #e91e63;}
+
+.btn{
+  display:block;width:100%;padding:14px;margin-top:10px;
+  border:none;border-radius:12px;font-size:16px;color:#fff;
+}
+
+.btn-rec{background:linear-gradient(45deg,#4caf50,#2ecc71);}
+.btn-fixed{background:linear-gradient(45deg,#2196f3,#42a5f5);}
+.btn-data{background:linear-gradient(45deg,#ff9800,#ffb74d);}
+.btn-tm{background:linear-gradient(45deg,#e91e63,#f06292);}
+
+#toast{
+  position:fixed;
+  bottom:80px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.8);
+  color:#fff;
+  padding:10px 16px;
+  border-radius:20px;
+  font-size:14px;
+  opacity:0;
+  transition:all 0.3s;
+  z-index:999;
+}
+#toast.show{
+  opacity:1;
+  bottom:100px;
+}
+.tip{
+  background:linear-gradient(45deg,#e3f2fd,#f1f8ff);
+  color:#333;
+  padding:10px 14px;
+  border-radius:10px;
+  font-size:14px;
+  margin:10px 0;
+  border-left:4px solid #2196f3;
+}
+.tip2{
+  text-align:center;
+  font-size:13px;
+  color:#666;
+  margin-top:6px;
+}
+.marquee{
+  width:100%;
+  overflow:hidden;
+  background:#2196f3;
+  color:#fff;
+  font-size:12px;
+  padding:6px 0;
+}
+
+.marquee-text{
+  display:inline-block;
+  white-space:nowrap;
+  padding-left:100%;
+  animation:scroll 25s linear infinite;
+}
+
+@keyframes scroll{
+  0%{ transform:translateX(0); }
+  100%{ transform:translateX(-100%); }
+}
+
+/* 新开奖高亮 */
+.highlight{
+  color:#ffeb3b;
+  font-weight:bold;
+}
+
+.mq-num{
+  display:inline-block;
+  margin:0 2px;
+  padding:2px 6px;
+  border-radius:6px;
+  font-size:16px;
+  color:#fff;
+}
+
+.mq-normal{
+  background:#607d8b;
+}
+
+.mq-tm{
+  background:#ff5722;
+  font-weight:bold;
+  transform:scale(1.15);
+  box-shadow:0 0 6px rgba(255,87,34,0.7);
+}
+</style>
+</head>
+
+<body>
+<div class="marquee">
+  <div id="marqueeText" class="marquee-text"></div>
+</div>
+<!-- ==============================覆盖 + 防冷 + 稳定================================= -->
+<h2>🔥 玩彩小助手</h2>
+<div class="tip2">
+  ⚡ 建议每天只参考一次，避免频繁刷新影响判断
+</div>
+<!--<button class="btn btn-rec" onclick="generateRecommendations()">🎯 刷新推荐</button>
+<button class="btn btn-fixed" onclick="changeFixed()">🔄 换固定组</button>-->
+<!--<button class="btn btn-tm" onclick="showTmAnalysis()">📊 特码分析</button>-->
+<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>
+<button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
+<button class="btn btn-fixed" onclick="showTmAnalysis(true)">📊 强制刷新特码（慎用）</button>
+<button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
+
+<div id="indexOut"></div>
+<div id="fixedOut"></div>
+<div id="out"></div>
+<div id="tmOut"></div>
+<div id="betOut"></div>
+<div id="tmHistory"></div>
+<div id="history"></div>
+<div id="toast"></div>
+<script>
+
+const lockDays = 7;
+const today = new Date().toISOString().split("T")[0];
+let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
+let loading = false;
+const kjDataSize = 100;
+const hisKjDataSize = 10;
+const fupanSize = 10;
+let currentAnalysis = null;
+
+function seededRandom(seed){
+    let x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+
+// ===== 数据 =====
+async function fetchRaw(){
+    try{
+        let res = await fetch("https://ls.kjkj.fit/kj?t=" + Date.now(), {
+            cache: "no-store"
+        });
+
+        if(!res.ok){
+            throw new Error("接口状态异常");
+        }
+
+        let text = await res.text();
+
+        try{
+            return JSON.parse(text);
+        }catch(e){
+            console.warn("返回不是JSON：", text);
+            return { data: [] };
+        }
+
+    }catch(e){
+        console.log("接口失败", e);
+        return { data: [] };
+    }
+}
+
+async function fetchData(){
+    const CACHE_KEY = "cacheHistory";
+    const CACHE_TIME_KEY = "cacheHistoryTime";
+    const EXPIRE = 30 * 60 * 1000;
+    let cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
+    let cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+
+    if(cache.length > 0 && cacheTime && (Date.now() - cacheTime < EXPIRE)){
+        return cache;
+    }
+
+    try{
+        let json = await fetchRaw();
+        let data = (json.data || []).slice(0, kjDataSize);
+
+        // ❗ 接口空 → 用旧缓存
+        if(!data.length){
+            if(cache){
+                console.warn("接口无数据，用缓存");
+                return JSON.parse(cache);
+            }
+            return [];
+        }
+
+        // ✅ 写缓存
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_TIME_KEY, Date.now());
+
+        return data;
+
+    }catch(e){
+        console.log("拉取数据异常", e);
+        // ❗ 兜底
+        if(cache){
+            return JSON.parse(cache);
+        }
+
+        return [];
+    }
+}
+// ===== 工具 =====
+function getHistory(raw){
+    return raw
+        .filter(i=>i && i.num)
+        .map(i=>i.num.split(',').map(Number));
+}
+
+function showToast(msg){
+    let t = document.getElementById("toast");
+    t.innerText = msg;
+    t.classList.add("show");
+
+    setTimeout(()=>{
+        t.classList.remove("show");
+    },2000);
+}
+
+// ===== 杀号 =====
+function killNumbers(history){
+    let freq=Array(50).fill(0);
+    history.forEach(p=>{
+        let tm=p[6];
+        freq[tm]++;
+    });
+    let killSet=new Set();
+    // ⭐ 只杀“极端没出现的”
+    for(let i=1;i<=49;i++){
+        if(freq[i]===0 && killSet.size<10){
+            killSet.add(i);
+        }
+    }
+    return killSet;
+}
+
+// ===== 特码权重 =====
+function calcTmWeights(history, seed){
+
+    let freq = Array(50).fill(0);
+    let last = Array(50).fill(999);
+
+    history.forEach((p, idx)=>{
+        let tm = p[6];
+
+        freq[tm]++;
+
+        // ⭐ 最近出现位置
+        if(last[tm] === 999){
+            last[tm] = idx;
+        }
+    });
+
+    let maxF = Math.max(...freq);
+
+    let weights = [];
+
+    for(let i=1;i<=49;i++){
+
+        // ⭐ 热度
+        let hot = freq[i] / (maxF || 1);
+
+        // ⭐ 遗漏值（越久没出越高）
+        let gap = Math.min(last[i], 40) / 40;
+
+        // ⭐ 极冷号额外加分
+        let cold = 0;
+
+        if(last[i] > 30){
+            cold = 0.45;
+        }else if(last[i] > 20){
+            cold = 0.25;
+        }else if(last[i] > 10){
+            cold = 0.12;
+        }
+
+        // ⭐ 最近刚开 → 压制
+        let recentPenalty = 1;
+
+        if(last[i] <= 1){
+            recentPenalty = 0.45;
+        }else if(last[i] <= 3){
+            recentPenalty = 0.7;
+        }
+
+        // ⭐ 新权重公式
+        let w =
+            0.15
+            + hot * 0.35
+            + gap * 0.9
+            + cold
+            + seededRandom(seed + i) * 0.18;
+
+        w *= recentPenalty;
+
+        weights[i] = w;
+    }
+
+    return weights;
+}
+
+function coldBonus(num, history){
+    let lastAppear = history.findIndex(p => p.includes(num));
+    // 完全没出现（极冷）
+    if(lastAppear === -1) return 0.8;
+    // 分层冷号（越久越加分）
+    if(lastAppear > 35) return 0.6;
+    if(lastAppear > 25) return 0.4;
+    if(lastAppear > 15) return 0.2;
+    return 0;
+}
+function pickNumbers(pool, count, seed){
+    let res = [];
+    let tries = 0;
+
+    // ⭐ 防死循环
+    while(res.length < count && tries < 50){
+        let x = pool[Math.floor(seededRandom(seed + tries) * pool.length)];
+        if(!res.includes(x)){
+            res.push(x);
+        }
+        tries++;
+    }
+
+    return res;
+}
+// ===== 特码生成 =====
+function genTmUltimate(weights, seed){
+    let arr = [];
+    for(let i=1;i<=49;i++){
+        arr.push({n: i, w: weights[i]});
+    }
+    arr.sort((a,b)=>b.w-a.w);
+    let top = arr.slice(0,30).map(i=>i.n);
+    let bets = shrinkBets(top, seed);
+
+    // 统计号码出现频率
+    let freq = {};
+    bets.forEach(b=>{
+        b.forEach(n=>{
+            freq[n] = (freq[n] || 0) + 1;
+        });
+    });
+
+    // 取出现频率最高的8个号码
+    let nums = Object.keys(freq).sort((a,b)=>{
+        let diff = freq[b] - freq[a];
+        if(diff !== 0) return diff;
+        return weights[b] - weights[a];
+    }).slice(0,8).map(Number).sort((a,b)=>a-b);
+
+    // alert("推荐号码:"+ nums);
+    return { nums, top, kill: arr.slice(35).map(i=>i.n) };
+}
+
+function genTmUltimate2(weights, seed){
+    let arr = [];
+    for(let i=1;i<=49;i++){
+        arr.push({
+            n:i,
+            w:weights[i]
+        });
+    }
+
+    // ⭐ 排序
+    arr.sort((a,b)=>b.w-a.w);
+
+    // ⭐ Top池扩大
+    let topPool = arr.slice(0,30).map(i=>i.n);
+
+    let strong = topPool.slice(0,10);
+    let mid    = topPool.slice(10,20);
+    let weak   = topPool.slice(20,30);
+
+    let res = [];
+    res = res.concat(pickNumbers(strong, 3, seed));
+    res = res.concat(pickNumbers(mid, 3, seed + 100));
+    res = res.concat(pickNumbers(weak, 2, seed + 200));
+
+    // ⭐ 去重
+    res = [...new Set(res)];
+
+    // ⭐ 防止数量不足
+    let idx = 0;
+
+    while(res.length < 8 && idx < 100){
+        let x = topPool[
+            Math.floor(
+                seededRandom(seed + 500 + idx)
+                * topPool.length
+            )
+        ];
+
+        if(!res.includes(x)){
+            res.push(x);
+        }
+
+        idx++;
+    }
+
+    // ⭐ 强制混入1个外围号（关键）
+    let outside = arr.slice(30,49).map(i=>i.n);
+
+    let extra =
+        outside[
+            Math.floor(
+                seededRandom(seed + 999)
+                * outside.length
+            )
+        ];
+
+    // ⭐ 替换一个中间号
+    let replaceIndex =
+        2 +
+        Math.floor(
+            seededRandom(seed + 888)
+            * 4
+        );
+
+    res[replaceIndex] = extra;
+    // ⭐ 最终去重
+    res = [...new Set(res)];
+    // ⭐ 再补齐
+    idx = 0;
+    while(res.length < 8 && idx < 50){
+        let x = topPool[
+            Math.floor(
+                seededRandom(seed + 700 + idx)
+                * topPool.length
+            )
+        ];
+        if(!res.includes(x)){
+            res.push(x);
+        }
+        idx++;
+    }
+    return {
+        nums: res.slice(0,8).sort((a,b)=>a-b),
+        top: arr.slice(0,16).map(i=>i.n),
+        kill: arr.slice(35).map(i=>i.n)
+    };
+}
+
+// ===== 正码 =====
+function calcWeights(history, seed){
+    let freq=Array(50).fill(0);
+
+    history.forEach(p=>p.forEach(n=>freq[n]++));
+
+    let maxF=Math.max(...freq);
+    let weights=[];
+
+    for(let i=0;i<50;i++){
+        weights[i] = 0.5 + (freq[i]/maxF) + seededRandom(seed + i)*0.2;
+    }
+
+    return weights;
+}
+
+function genOne(w,c,seed){
+    let n=[];
+    let idx=0;
+
+    while(n.length < c){
+        let x = Math.floor(seededRandom(seed + idx)*49)+1;
+        idx++;
+
+        if(!n.includes(x)) n.push(x);
+    }
+
+    return n.sort((a,b)=>a-b);
+}
+
+// ===== 推荐 =====
+async function generateRecommendations(){
+
+    let raw=await fetchData();
+    let history=getHistory(raw);
+    let latestId = raw[0].id;
+
+    let seed_rec = latestId * 10 + 2;
+
+    let w = calcWeights(history, seed_rec);
+    let wtm = calcTmWeights(history, seed_rec);
+
+    let pool=[];
+
+    for(let i=0;i<200;i++){
+
+        // let seedLoop = seed_rec + i * 100;
+        let seedLoop = seed_rec + i * 137 + (i*i);
+        let tm = genTmUltimate(wtm, seedLoop);
+        let z  = genOne(w, 4, seedLoop + 50);
+
+        pool.push({
+            t:tm.nums,
+            z,
+            sc: seededRandom(seedLoop + 99)*100
+        });
+    }
+
+    pool.sort((a,b)=>b.sc-a.sc);
+
+    let best=pool[0];
+    let second=pool[1];
+
+    document.getElementById("out").innerHTML=`
+    <div class="card best">
+    🟢 最优推荐<br>
+    特码：${best.t.join(",")}<br>
+    正码：${best.z.join(",")}
+    </div>
+
+    <div class="card balance">
+    🟡 次优推荐<br>
+    特码：${second.t.join(",")}<br>
+    正码：${second.z.join(",")}
+    </div>`;
+}
+
+// ===== 固定组 =====
+async function initFixed(force=false){
+    let raw=await fetchData();
+    let history=getHistory(raw);
+    let latestId = raw[0].id;
+    let seed_fix = latestId * 10 + 3;
+    if(!force && fixedData.t){
+        renderFixed();
+        return;
+    }
+
+    // let wtm=calcTmWeights(history);
+    // let tm=genTmUltimate(wtm);
+
+    let wtm = calcTmWeights(history, seed_fix);
+    let tm;
+    if(fixedData.t){
+        // ① 保留4个最强号码
+        let keep = selectKeep(fixedData.t, history);
+        // ② 只补2个新号码
+        while(keep.length < 6){
+            let pool = genTmUltimate(wtm, seed_fix).nums;
+            let x = pool[Math.floor(seededRandom(seed_fix++)*pool.length)];
+
+            if(!keep.includes(x)){
+                keep.push(x);
+            }
+        }
+        tm = {nums: keep.sort((a,b)=>a-b)};
+    }else{
+        // 第一次生成
+        tm = genTmUltimate(wtm, seed_fix);
+    }
+    let z = genOne(calcWeights(history,seed_fix),4,seed_fix);
+
+    // fixedData={t:tm.nums,z};
+
+    let expire = new Date();
+    expire.setDate(expire.getDate() + lockDays);
+
+    fixedData = {
+        t:tm.nums,
+        z,
+        start: today,
+        expire: expire.toISOString().split("T")[0]
+    };
+
+    localStorage.setItem("fixedData",JSON.stringify(fixedData));
+
+    renderFixed();
+}
+
+function selectKeep(oldNums, history){
+    let freq = {};
+    oldNums.forEach(n=>{
+        freq[n] = 0;
+        history.forEach(p=>{
+            if(p.includes(n)){
+                freq[n]++;
+            }
+        });
+    });
+    // 按出现次数排序（出现多 = 强号）
+    return oldNums.sort((a,b)=>freq[b]-freq[a]).slice(0,4); // ⭐保留4个
+}
+
+function renderFixed(){
+    if(!fixedData.t) return;
+
+    document.getElementById("fixedOut").innerHTML=`
+    <div class="card fixed">
+    🔵 固定追号组<br>
+    特码：${fixedData.t.join(",")}<br>
+    正码：${fixedData.z.join(",")}
+    </div>`;
+}
+
+async function changeFixed(){
+    if(confirm("确认更换固定组？将重新锁定7天")){
+        await initFixed(true);
+    }
+}
+
+// ===== 特码分析 =====
+async function showTmAnalysis(forceUpdate=false){
+    if(forceUpdate && !confirm("=====  确认刷新特码？=====")){
+        return;
+    }
+    let box = document.getElementById("tmOut");
+    box.innerHTML = "⏳ 正在计算分析...";
+    await new Promise(r => setTimeout(r, 300));
+    let raw = await fetchData();
+    if(!raw || !raw.length){
+        box.innerHTML = "⚠️ 拉取数据失败";
+        return;
+    }
+    let latest = raw[0];
+    let history = getHistory(raw);
+    let latestId = latest.id;
+    let currentPeriod = Number(latest.qishu) + 1;
+    let seed_tm = latestId * 10 + 1;
+    if(forceUpdate){
+        seed_tm += Date.now();
+    }
+    updateResult(latest);
+    // raw.slice(0, 10).forEach(item => updateResult(item));
+    fixMissingHistory(latest);
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let cachedItem = list.find(i => i.expect === currentPeriod);
+    if(cachedItem && !forceUpdate){
+        showToast("✅ 已生成本期分析结果");
+        currentAnalysis = {
+            nums: cachedItem.nums,
+            top: cachedItem.top,
+            kill: cachedItem.kill,
+            seed: seed_tm
+        };
+        renderTm(list.find(i => i.expect === currentPeriod), currentPeriod);
+        return;
+    }
+    // ⭐ 每次都重新算（关键）
+    let wtm = calcTmWeights(history, seed_tm);
+    let result = genTmUltimate(wtm, seed_tm);
+    currentAnalysis = {
+        nums: result.nums,
+        top: result.top,
+        kill: result.kill,
+        seed: seed_tm
+    }
+    savePrediction(result, latest);
+    renderTm(result, currentPeriod);
+    if(forceUpdate){
+        showToast("♻️ 已手动刷新分析结果");
+    }
+}
+
+function fixMissingHistory(latest){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let currentQishu = Number(latest.qishu)
+    let exists = new Set(list.map(i => Number(i.expect)));
+    // ⭐ 补最近10期（你可以改范围）
+    for(let i = currentQishu; i > currentQishu - 10; i--){
+        if(!exists.has(i)){
+            list.unshift({
+                expect: i,
+                date: latest.date,
+                nums: [],   // 没预测
+                top: [],
+                kill: [],
+                open: null,
+                hit: null,
+                hitNums: false,
+                hitTop: false
+            });
+        }
+    }
+    list.sort((a,b)=>b.expect - a.expect);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+}
+
+function savePrediction(result, latest){
+
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+
+    let expect = Number(latest.qishu) + 1;
+    list = list.filter(i => i.expect != expect);
+
+    // ⭐ 过滤掉旧脏数据（关键）
+    // list = list.filter(i => i.expect);
+
+    // ⭐ 防重复
+    // if(list.some(i => i.expect == expect)){
+    //     return;
+    // }
+
+    list.unshift({
+        expect,
+        date: latest.date,
+
+        nums: result.nums,
+        top: result.top,
+        kill: result.kill,
+
+        open: null,
+        hit: null
+    });
+
+    // 限制数量
+    if(list.length > 30){
+        list = list.slice(0,30);
+    }
+
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+}
+
+function updateResult(latest){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let qishu = Number(latest.qishu);
+    let openNum = Number(latest.num.split(",")[6]);
+    let found = false;
+    list.forEach(item => {
+        if(Number(item.expect) === qishu){
+            found = true
+            if(item.open === null){
+                item.open = openNum;
+                item.hitNums = item.nums.includes(openNum);
+                item.hitTop  = item.top.includes(openNum);
+                item.hit = item.hitTop;
+            }
+        }
+    });
+    if(!found){
+        list.unshift({
+            expect: qishu,
+            date: latest.date,
+            nums: [],
+            top: [],
+            kill: [],
+            open: openNum,
+            hit: false,
+            hitNums: false,
+            hitTop: false
+        });
+    }
+    list.sort((a,b)=>b.expect - a.expect);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+}
+
+function renderTm(result, currentPeriod) {
+    let top30 = result.top || [];
+
+    // 从 localStorage 获取最近 1 期开奖号码
+    let lastOpenNum = null;
+    try {
+        let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (raw.length > 0 && raw[0] && raw[0].num) {
+            let nums = raw[0].num.split(",").map(Number);
+            lastOpenNum = nums[6];
+        }
+    } catch (e) {}
+
+    // 排除极冷（遗漏 > 25 期）
+    let history = [];
+    try {
+        let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        history = getHistory(raw);
+    } catch (e) {}
+
+    let missMap = new Map();
+    for (let i = 1; i <= 49; i++) {
+        let lastIdx = -1;
+        for (let j = 0; j < history.length; j++) {
+            if (history[j][6] === i) {
+                lastIdx = j;
+                break;
+            }
+        }
+        let miss = lastIdx === -1 ? history.length : lastIdx;
+        missMap.set(i, miss);
+    }
+
+    // 过滤 Top30
+    let filtered = top30.filter(num => {
+        if (lastOpenNum !== null && num === lastOpenNum) return false;
+        let miss = missMap.get(num) || 999;
+        return miss <= 25;
+    });
+
+    if (filtered.length < 8) {
+        filtered = top30.filter(num => {
+            if (lastOpenNum !== null && num === lastOpenNum) return false;
+            return true;
+        });
+    }
+    if (filtered.length < 8) {
+        filtered = [...top30];
+    }
+
+    // ⭐ 关键改动：使用更强的随机种子（加入当期时间戳）
+    let seed = currentPeriod * 10000 + Math.floor(Date.now() / 86400000);
+    let shuffled = [...filtered];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        let j = Math.floor(seededRandom(seed + i * 10000) * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    let final8 = shuffled.slice(0, 8).sort((a, b) => a - b);
+
+    document.getElementById("tmOut").innerHTML = `
+    <div class="card tm">
+    🔥 当前${currentPeriod}期特码分析（仅供参考待投注）<br><br>
+    ❌ 杀号${result.kill.length}：<span style="word-break:break-all;">${(result.kill || []).slice(0, 20).join(",")}
+</span><br><br>
+    ⭐ Top${result.top.length}：<span style="word-break:break-all;">${result.top.join(",")}</span><br><br>
+    🎯 推荐：${final8.join(",")}<br>
+    <!--<span style="font-size:12px;">✅ 已剔除：上期特码 + 遗漏＞25期</span>-->
+    </div>`;
+}
+
+function renderTmRandom8(result, currentPeriod){
+    // 用期号作为种子，同一期内随机结果固定
+    let seed = currentPeriod * 10000;
+    let top30 = result.top || [];
+    let shuffled = [...top30];
+    // 种子随机洗牌
+    for(let i = shuffled.length - 1; i > 0; i--){
+        let j = Math.floor(seededRandom(seed + i) * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    let random8 = shuffled.slice(0, 8).sort((a,b)=>a-b);
+
+    document.getElementById("tmOut").innerHTML=`
+    <div class="card tm">
+    🔥 当前${currentPeriod}期特码分析（仅供参考待投注）<br><br>
+    ❌ 杀号${result.kill.length}：<span style="word-break:break-all;">
+${(result.kill || []).slice(0,20).join(",")}
+</span><br><br>
+    ⭐ Top${result.top.length}：<span style="word-break:break-all;">${result.top.join(",")}</span><br><br>
+    🎯 推荐：${random8.join(",")}
+    </div>`;
+}
+
+function renderTmHot(result,currentPeriod){
+    document.getElementById("tmOut").innerHTML=`
+    <div class="card tm">
+    🔥 当前${currentPeriod}期特码分析（仅供参考待投注）<br><br>
+    ❌ 杀号${result.kill.length}：<span style="word-break:break-all;">
+${(result.kill || []).slice(0,20).join(",")}
+</span><br><br>
+    ⭐ Top${result.top.length}：<span style="word-break:break-all;">${result.top.join(",")}</span><br><br>
+    🎯 推荐：${result.nums.join(",")}
+    </div>`;
+}
+
+function renderTmHotCold(result,currentPeriod){
+    // 原推荐8码取前5个作为热码
+    let hotNums = result.nums.slice(0,5);
+
+    // 从杀号中取3个作为冷号（排除已在热码中的）
+    let coldNums = [];
+    let killList = result.kill || [];
+    for(let n of killList){
+        if(!hotNums.includes(n) && coldNums.length < 3){
+            coldNums.push(n);
+        }
+    }
+
+    // 合并推荐
+    let finalNums = [...hotNums, ...coldNums].sort((a,b)=>a-b);
+
+    document.getElementById("tmOut").innerHTML=`
+    <div class="card tm">
+    🔥 当前${currentPeriod}期特码分析（仅供参考待投注）<br><br>
+    ❌ 杀号${result.kill.length}：<span style="word-break:break-all;">
+${(result.kill || []).slice(0,20).join(",")}
+</span><br><br>
+    ⭐ Top${result.top.length}：<span style="word-break:break-all;">${result.top.join(",")}</span><br><br>
+    🎯 推荐(5热+3冷)：${finalNums.join(",")}<br>
+    📌热：${hotNums.join(",")} ❄️冷：${coldNums.join(",")}
+    </div>`;
+}
+
+async function generateBets(){
+    // 如果没有缓存的分析结果，先调用分析
+    if(!currentAnalysis){
+        await showTmAnalysis(false);
+    }
+    if(!currentAnalysis){
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 请先刷新特码分析</div>`;
+        return;
+    }
+
+    let bets = shrinkBets(currentAnalysis.top, currentAnalysis.seed);
+
+    let html = `<div class="card tm">
+    💰 投注方案（选择其中一个或多个方案）<br><br>`;
+
+    bets.forEach((b,i)=>{
+        html += `方案${i+1}：${b.join(",")}<br>`;
+    });
+
+    // 显示推荐号码（与投注方案统计一致）
+    // html += `<br>🎯 推荐号码：${currentAnalysis.nums.join(",")}<br>`;
+    // html += `📊 说明：推荐号码来自投注方案中出现频率最高的8个号<br>`;
+    // html += `</div>`;
+
+    document.getElementById("betOut").innerHTML = html;
+}
+
+async function generateBets2(){
+    let raw=await fetchData();
+    let history=getHistory(raw);
+    let latestId = raw[0].id;
+    let seed_bet = latestId * 10 + 4;
+    let wtm = calcTmWeights(history, seed_bet);
+    let result = genTmUltimate(wtm, seed_bet);
+    let bets = shrinkBets(result.top, seed_bet);
+
+    let html=`<div class="card tm">
+    💰 投注方案（选择其中一个或多个方案）<br><br>`;
+
+    bets.forEach((b,i)=>{
+        html+=`方案${i+1}：${b.join(",")}<br>`;
+    });
+    html+=`</div>`;
+    document.getElementById("betOut").innerHTML = html;
+}
+
+function shrinkBets(top, seed){
+    let result=[];
+
+    for(let i=0;i<10;i++){
+
+        let arr=[...top];
+
+        // Fisher-Yates 洗牌（稳定版）
+        for(let j=arr.length-1;j>0;j--){
+            let k = Math.floor(seededRandom(seed + i*50 + j)*(j+1));
+            [arr[j], arr[k]] = [arr[k], arr[j]];
+        }
+
+        let pick = arr.slice(0,8).sort((a,b)=>a-b);
+        result.push(pick);
+    }
+
+    return result;
+}
+
+// ===== 开奖 =====
+async function loadHistory(){
+    if(loading) return;
+    loading = true;
+
+    let box = document.getElementById("history");
+    box.innerHTML = "⏳ 正在加载开奖数据...";
+    await new Promise(r => setTimeout(r, 300));
+    let list = await fetchData();
+    if(!list || !list.length){
+        box.innerHTML = "⚠️ 数据获取失败，请稍后再试";
+        loading = false;
+        return;
+    }
+
+    let html=`<div class="card tm"><b>📊 最近${hisKjDataSize}期开奖数据</b><br>`;
+
+    list.slice(0,hisKjDataSize).forEach(i=>{
+        if(!i || !i.num) return;
+        html += `${i.qishu}期 (${i.date})<br>${i.num}<br><br>`;
+    });
+
+    html+=`</div>`;
+
+    box.innerHTML = html;
+
+    loading = false;
+}
+
+async function showTmHistory(){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    list = list.filter(i => i.open !== null && i.open !== undefined && i.expect).slice(0,fupanSize);
+    if(!list.length){
+        document.getElementById("tmHistory").innerHTML = "暂无历史投注数据";
+        return;
+    }
+
+    let box = document.getElementById("tmHistory");
+    box.innerHTML = "⏳ 正在加载历史投注结果...";
+    await new Promise(r => setTimeout(r, 200));
+
+    let html = `<div class="card tm">
+    📊 特码历史投注结果 ${list.length}期<br><br>`;
+
+    list.forEach(i=>{
+        html += `
+        <div style="margin-bottom:10px;">
+        ${i.expect}期<br>
+        Top：<span style="word-break:break-all;">${i.top.slice(0,30).join(",")}</span><br>
+        🎯 推荐：${i.nums.join(",")}<br>
+
+        🎲 开奖：<b style="color:#ff5722;">${i.open}</b><br>
+        ${i.nums.length === 0 ? "⚠️ 无预测" : ""}
+        ${i.hitNums ? "✅ 推荐命中" : ""}
+        ${i.hitTop ? "✅ Top命中" : ""}
+        ${i.nums.length > 0 && !i.hitNums && !i.hitTop ? "❌ 未中" : ""}
+        </div>
+        <hr>`;
+    });
+    html += `</div>`;
+    box.innerHTML = html;
+}
+
+function formatNums(nums){
+    let arr = nums.split(",");
+    return arr.map((n,idx)=>{
+        // ⭐ 最后一个号码特殊处理
+        if(idx === arr.length - 1){
+            return `<span class="mq-num mq-tm">${n}</span>`;
+        }
+        return `<span class="mq-num mq-normal">${n}</span>`;
+    }).join("");
+}
+
+async function updateMarquee() {
+  let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+  try {
+    let raw = await fetchData(); // 用你的缓存函数
+    let latest = raw[0];
+    let lastId = localStorage.getItem("marqueeLastId");
+    let numsHtml = formatNums(latest.num);
+    let text = "";
+    // ⭐ 判断是否新开奖
+    if (lastId != latest.id) {
+      text = `${base}　　<span class="highlight">🆕 新开奖：${latest.qishu}期（${latest.date}）${numsHtml}</span>`;
+      localStorage.setItem("marqueeLastId", latest.id);
+    } else {
+      text = `${base}　　📢 最新：${latest.qishu}期（${latest.date}）${numsHtml}`;
+    }
+    // ⭐ 双倍拼接（无缝滚动）
+    document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+  } catch (e) {
+    console.log("滚动条失败", e);
+    document.getElementById("marqueeText").innerText = base;
+  }
+}
+
+async function init(){
+    let box = document.getElementById("indexOut");
+    box.innerHTML = "⏳ 正在加载数据...";
+    // ⭐ 3秒后显示慢提示
+    let slowTimer = setTimeout(()=>{
+        box.innerHTML = "🐢 网络有点慢，请稍等...";
+    }, 3000);
+    let data = [];
+    try{
+        data = await fetchData();
+    }catch(e){
+        console.log("加载异常", e);
+    }
+    clearTimeout(slowTimer);
+    // ❗ 关键：判断结果
+    if(!data || !data.length){
+        box.innerHTML = `
+        ⚠️ 数据加载失败<br><br>
+        <button onclick="location.reload()">🔄 点击重试</button>
+        `;
+        return;
+    }
+    box.innerHTML = "";
+    updateMarquee();
+    showTmAnalysis();
+}
+// ===== 初始化 =====
+// initFixed();
+// generateRecommendations();
+init();
+</script>
+
+</body>
+</html>

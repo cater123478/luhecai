@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>玩彩小助手</title>
+
+<style>
+body{font-family:Arial;max-width:650px;margin:auto;padding:15px;background:#f5f6fa;}
+h2{text-align:center;}
+
+.card{
+  background:#fff;
+  border-radius:12px;
+  padding:12px;
+  margin-top:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+.tm{border-left:5px solid #e91e63;}
+
+.btn{
+  display:block;width:100%;padding:14px;margin-top:10px;
+  border:none;border-radius:12px;font-size:16px;color:#fff;
+}
+
+.btn-rec{background:linear-gradient(45deg,#4caf50,#2ecc71);}
+.btn-data{background:linear-gradient(45deg,#ff9800,#ffb74d);}
+.btn-tm{background:linear-gradient(45deg,#e91e63,#f06292);}
+
+#toast{
+  position:fixed;
+  bottom:100px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.8);
+  color:#fff;
+  padding:10px 14px;
+  border-radius:20px;
+  font-size:14px;
+  opacity:0;
+  transition:all 0.3s;
+  z-index:999;
+  white-space:normal;
+  max-width:85vw;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#toast.show{
+  opacity:1;
+}
+
+.marquee{
+  width:100%;
+  overflow:hidden;
+  background: #5db1f3;
+  color:#fff;
+  font-size:12px;
+  padding:6px 0;
+}
+
+.marquee-text{
+  display:inline-block;
+  white-space:nowrap;
+  padding-left:100%;
+  animation:scroll 31s linear infinite;   /*越小越快，滚动速度设置*/
+}
+
+@keyframes scroll{
+  0%{ transform:translateX(0); }
+  100%{ transform:translateX(-100%); }
+}
+
+/* 新开奖高亮 */
+.highlight{
+  color:#ffeb3b;
+  font-weight:bold;
+}
+
+.mq-num{
+  display:inline-block;
+  margin:0 2px;
+  padding:2px 6px;
+  border-radius:6px;
+  font-size:16px;
+  color:#fff;
+}
+
+.mq-normal{
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 2px 6px;
+}
+
+.mq-tm{
+  background:#ff5722;
+  font-weight:bold;
+  transform:scale(1.15);
+  box-shadow:0 0 6px rgba(255,87,34,0.7);
+  margin-left: 8px;
+}
+</style>
+</head>
+
+<body>
+<div class="marquee">
+  <div id="marqueeText" class="marquee-text"></div>
+</div>
+<h2>🔥 玩彩小助手</h2>
+<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>
+<button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
+<button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
+<button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
+
+<div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
+<div id="indexOut"></div>
+<div id="fixedOut"></div>
+<div id="out"></div>
+<div id="tmOut"></div>
+<div id="betOut"></div>
+<div id="tmHistory"></div>
+<div id="history"></div>
+<div id="toast"></div>
+<script>
+// 所有号码按生肖分组
+const SHENGXIAO_MAP = {
+    '马': [1, 13, 25, 37, 49],
+    '蛇': [2, 14, 26, 38],
+    '龙': [3, 15, 27, 39],
+    '兔': [4, 16, 28, 40],
+    '虎': [5, 17, 29, 41],
+    '牛': [6, 18, 30, 42],
+    '鼠': [7, 19, 31, 43],
+    '猪': [8, 20, 32, 44],
+    '狗': [9, 21, 33, 45],
+    '鸡': [10, 22, 34, 46],
+    '猴': [11, 23, 35, 47],
+    '羊': [12, 24, 36, 48]
+};
+
+// 五行分组
+const WUXING_MAP = {
+    '金': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43],
+    '木': [8, 9, 16, 17, 24, 25, 38, 39, 46, 47],
+    '水': [1, 14, 15, 22, 23, 30, 31, 44, 45],
+    '火': [2, 3, 10, 11, 18, 19, 32, 33, 40, 41, 48, 49],
+    '土': [6, 7, 20, 21, 28, 29, 36, 37]
+};
+
+// 波色分组
+const BOSE_MAP = {
+    '红波': [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46],
+    '蓝波': [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48],
+    '绿波': [5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]
+};
+
+
+const lockDays = 7;
+const today = new Date().toISOString().split("T")[0];
+let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
+let loading = false;
+const kjDataSize = 100;
+const hisKjDataSize = 30;
+const fupanSize = 30;
+let currentAnalysis = null;
+
+// 生肖映射（按2026年马年规则）
+const ZODIAC_MAP = {
+    1:'马',2:'蛇',3:'龙',4:'兔',5:'虎',6:'牛',7:'鼠',8:'猪',9:'狗',10:'鸡',11:'猴',12:'羊',
+    13:'马',14:'蛇',15:'龙',16:'兔',17:'虎',18:'牛',19:'鼠',20:'猪',21:'狗',22:'鸡',23:'猴',24:'羊',
+    25:'马',26:'蛇',27:'龙',28:'兔',29:'虎',30:'牛',31:'鼠',32:'猪',33:'狗',34:'鸡',35:'猴',36:'羊',
+    37:'马',38:'蛇',39:'龙',40:'兔',41:'虎',42:'牛',43:'鼠',44:'猪',45:'狗',46:'鸡',47:'猴',48:'羊',
+    49:'马'
+};
+
+function getZodiac(num) {
+    return ZODIAC_MAP[num] || '';
+}
+
+function getBoseColor(num) {
+    if (BOSE_MAP['红波'].includes(num)) return '#e74c3c';   // 红色
+    if (BOSE_MAP['蓝波'].includes(num)) return '#0d93ea';   // 蓝色
+    if (BOSE_MAP['绿波'].includes(num)) return '#2ecc71';   // 绿色
+    return '';
+}
+
+function formatNums(nums) {
+    let arr = nums.split(",");
+    return arr.map((n, idx) => {
+        let num = parseInt(n);
+        let zodiac = getZodiac(num);
+        let color = getBoseColor(num);
+        let cls = idx === arr.length - 1 ? 'mq-num mq-tm' : 'mq-num mq-normal';
+        return `<span class="${cls}" style="${color ? 'background:'+color : ''}">${num}(${zodiac})</span>`;
+    }).join("");
+}
+
+// ===== 数据 =====
+async function fetchRaw(){
+    try{
+        let res = await fetch("https://ls.kjkj.fit/kj?t=" + Date.now(), {
+            cache: "no-store"
+        });
+        if(!res.ok){
+            throw new Error("接口状态异常");
+        }
+        let text = await res.text();
+        try{
+            return JSON.parse(text);
+        }catch(e){
+            console.warn("返回不是JSON：", text);
+            return { data: [] };
+        }
+    }catch(e){
+        console.log("接口失败", e);
+        return { data: [] };
+    }
+}
+
+async function fetchData(){
+    const CACHE_KEY = "cacheHistory";
+    const CACHE_TIME_KEY = "cacheHistoryTime";
+    const EXPIRE = 30 * 60 * 1000;
+    let cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
+    let cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+
+    if(cache.length > 0 && cacheTime && (Date.now() - cacheTime < EXPIRE)){
+        return cache;
+    }
+
+    try{
+        let json = await fetchRaw();
+        let data = (json.data || []).slice(0, kjDataSize);
+        // ❗ 接口空 → 用旧缓存
+        if(!data.length){
+            if(cache){
+                console.warn("接口无数据，用缓存");
+                return JSON.parse(cache);
+            }
+            return [];
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_TIME_KEY, Date.now());
+        return data;
+    }catch(e){
+        console.log("拉取数据异常", e);
+        if(cache){
+            return JSON.parse(cache);
+        }
+        return [];
+    }
+}
+// ===== 工具 =====
+function getHistory(raw){
+    return raw
+        .filter(i=>i && i.num)
+        .map(i=>i.num.split(',').map(Number));
+}
+
+function showToast(msg){
+    let t = document.getElementById("toast");
+    t.innerText = msg;
+    t.classList.add("show");
+
+    setTimeout(()=>{
+        t.classList.remove("show");
+    },2000);
+}
+
+// ===== 特码分析 =====
+async function showTmAnalysis(forceUpdate=false){
+    if(forceUpdate && !confirm("=====  确认刷新特码？=====")){
+        return;
+    }
+    let box = document.getElementById("tmOut");
+    box.innerHTML = "⏳ 正在计算分析...";
+    await new Promise(r => setTimeout(r, 300));
+
+    let raw = await fetchData();
+    if(!raw || !raw.length){
+        box.innerHTML = "⚠️ 拉取数据失败";
+        return;
+    }
+
+    let latest = raw[0];
+    let history = getHistory(raw);
+    let currentPeriod = Number(latest.qishu) + 1;
+
+    updateResult(latest);
+
+    // ⭐ 只算热号15码
+    let hot15 = getHot15(history);
+
+    currentAnalysis = {
+        nums: hot15,
+        top: [],
+        kill: [],
+        seed: 0,
+        weights: {}
+    };
+
+    // ⭐ 保存历史
+    saveHot15History(hot15, latest, history);
+    renderTm(currentAnalysis, currentPeriod);
+
+    if(forceUpdate){
+        showToast("♻️ 已手动刷新分析结果");
+    }
+}
+
+function saveHot15History(hot15, latest, history) {
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let expect = Number(latest.qishu) + 1;
+
+    // 删除当前期旧记录
+    list = list.filter(i => i.expect != expect);
+
+    // 插入当前期（带热号15码）
+    list.unshift({
+        expect: expect,
+        date: latest.date,
+        nums: hot15,
+        zodiacNums: getHotZodiacs(history),
+        top: [],
+        kill: [],
+        open: null,
+        hit: null
+    });
+
+    // 补全最近10期（只有没记录的才补）
+    let exists = new Set(list.map(i => Number(i.expect)));
+    let currentQishu = Number(latest.qishu);
+    for (let i = currentQishu; i > currentQishu - 10; i--) {
+        if (!exists.has(i) && i !== expect) {
+            list.push({
+                expect: i,
+                date: latest.date,
+                nums: [],
+                top: [],
+                kill: [],
+                open: null,
+                hit: null
+            });
+        }
+    }
+
+    list.sort((a, b) => b.expect - a.expect);
+    if (list.length > 30) list = list.slice(0, 30);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+}
+
+function updateResult(latest){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let qishu = Number(latest.qishu);
+    let openNum = Number(latest.num.split(",")[6]);
+    let found = false;
+    list.forEach(item => {
+        if(Number(item.expect) === qishu){
+            found = true
+            if(item.open === null){
+                item.open = openNum;
+                item.hitNums = item.nums.includes(openNum);
+                item.hitTop  = item.top.includes(openNum);
+                item.hit = item.hitTop;
+                // ⭐ 生肖命中
+                item.hitZodiac = item.zodiacNums ? item.zodiacNums.includes(getZodiac(openNum)) : false;            }
+        }
+    });
+    if(!found){
+        list.unshift({
+            expect: qishu,
+            date: latest.date,
+            nums: [],
+            zodiacNums: [],
+            top: [],
+            kill: [],
+            open: openNum,
+            hit: false,
+            hitNums: false,
+            hitTop: false,
+            hitZodiac: false
+        });
+    }
+    list.sort((a,b)=>b.expect - a.expect);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
+    let idx = hot15History.findIndex(item => item.expect === qishu);
+    if (idx !== -1) {
+        hot15History[idx].open = openNum;
+        hot15History[idx].hit = hot15History[idx].nums.includes(openNum);
+        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+    }
+}
+
+// ===== 50期热号15码 =====
+function getHot15(history) {
+    let freq = {};
+    for (let p of history.slice(0, 50)) {
+        let num = p[6];
+        freq[num] = (freq[num] || 0) + 1;
+    }
+    let sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+
+    // 取前12个高频号
+    let hot12 = sorted.slice(0, 12).map(Number);
+
+    // 找最近5期出现1次的号码
+    let recent = history.slice(0, 5);
+    let recentFreq = {};
+    for (let p of recent) {
+        let num = p[6];
+        recentFreq[num] = (recentFreq[num] || 0) + 1;
+    }
+    let candidates = Object.keys(recentFreq).filter(k => recentFreq[k] === 1).map(Number);
+    candidates = candidates.filter(n => !hot12.includes(n));
+
+    // 不够3个，从近10期出现1次的补
+    if (candidates.length < 3) {
+        let recent10 = history.slice(0, 10);
+        let freq10 = {};
+        for (let p of recent10) {
+            let num = p[6];
+            freq10[num] = (freq10[num] || 0) + 1;
+        }
+        let more = Object.keys(freq10).filter(k => freq10[k] === 1).map(Number);
+        more = more.filter(n => !hot12.includes(n) && !candidates.includes(n));
+        candidates = candidates.concat(more);
+    }
+
+    // 还不够，从高频池第13-18名补
+    if (candidates.length < 3) {
+        let backup = sorted.slice(12, 18).map(Number);
+        backup = backup.filter(n => !hot12.includes(n) && !candidates.includes(n));
+        candidates = candidates.concat(backup);
+    }
+
+    let hot15 = [...hot12, ...candidates.slice(0, 3)];
+    return hot15.sort((a, b) => a - b);
+}
+
+function getHotZodiacs(history) {
+    let freq = {};
+    for (let p of history.slice(0, 50)) {
+        let num = p[6];
+        let zodiac = getZodiac(num);
+        if (!zodiac) continue;
+        freq[zodiac] = (freq[zodiac] || 0) + 1;
+    }
+    let sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+    return sorted.slice(0, 4);  // ⭐ 直接返回生肖名称数组
+}
+
+function renderTm(result, currentPeriod) {
+    let top30 = [...(result.top || [])].sort((a, b) => a - b);
+    let kill = [...(result.kill || [])].sort((a, b) => a - b);
+
+    let history = [];
+    try {
+        let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        history = getHistory(raw);
+    } catch (e) {}
+
+    let nums = getHot15(history);
+    let label = `热号15码`;
+
+    // renderTm 里，计算完 nums 后
+    let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
+    let exist = hot15History.some(item => item.expect === currentPeriod);
+    if (!exist && nums.length > 0) {
+        hot15History.unshift({
+            expect: currentPeriod,
+            nums: nums,
+            open: null,
+            hit: false,
+            date: new Date().toISOString().split('T')[0]
+        });
+        hot15History = hot15History.slice(0, 30);
+        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+    }
+
+    let zodiacNames = getHotZodiacs(history).join('、');
+    document.getElementById("tmOut").innerHTML = `
+    <div class="card tm">
+    🔥 当前${currentPeriod}期分析<br><br>
+    🎯 推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
+    🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
+    </div>`;
+}
+
+async function generateBets(){
+    if(!currentAnalysis){
+        await showTmAnalysis(false);
+    }
+    if(!currentAnalysis){
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 请先刷新特码分析</div>`;
+        return;
+    }
+
+    // ⭐ 直接用热号15码生成投注方案
+    let hot15 = currentAnalysis.nums || [];
+    if (hot15.length === 0) {
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 暂无推荐号码</div>`;
+        return;
+    }
+
+    // 将15码拆分成3组，每组5码（或按你的需求分组）
+    let groups = [];
+    for (let i = 0; i < hot15.length; i += 5) {
+        groups.push(hot15.slice(i, i + 5));
+    }
+
+    let html = `<div class="card tm">💰 投注方案（${hot15.length}码）<br><br>`;
+
+    groups.forEach((g, idx) => {
+        html += `方案${idx+1}：${g.join(",")}<br>`;
+    });
+
+    // 也可以显示全部号码
+    html += `<br>📊 全部号码：${hot15.join(", ")}<br>`;
+    html += `</div>`;
+
+    document.getElementById("betOut").innerHTML = html;
+}
+
+// ===== 开奖 =====
+async function loadHistory(){
+    if(loading) return;
+    loading = true;
+
+    let box = document.getElementById("history");
+    box.innerHTML = "⏳ 正在加载开奖数据...";
+    await new Promise(r => setTimeout(r, 300));
+    let list = await fetchData();
+    if(!list || !list.length){
+        box.innerHTML = "⚠️ 数据获取失败，请稍后再试";
+        loading = false;
+        return;
+    }
+
+    let html=`<div class="card tm"><b>📊 最近${hisKjDataSize}期开奖数据</b><br>`;
+
+    list.slice(0, hisKjDataSize).forEach(i => {
+        if(!i || !i.num) return;
+        let nums = i.num.split(',').map(Number);
+        // let display = nums.map(n => `${n}(${getZodiac(n)}${getBoseColor(n)})`).join(' ');
+        let display = nums.map(n => {
+            let color = getBoseColor(n);  // 返回 #e74c3c
+            return `<span style="color:${color}">${n}(${getZodiac(n)})</span>`;
+        }).join(' ');
+        html += `${i.qishu}期 (${i.date})<br>${display}<br><br>`;
+    });
+    html+=`</div>`;
+    box.innerHTML = html;
+    loading = false;
+}
+
+async function showTmHistory(){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    list = list.filter(i => i.open !== null && i.open !== undefined && i.expect).slice(0,fupanSize);
+    if(!list.length){
+        document.getElementById("tmHistory").innerHTML = "暂无历史投注数据";
+        return;
+    }
+
+    let box = document.getElementById("tmHistory");
+    box.innerHTML = "⏳ 正在加载历史投注结果...";
+    await new Promise(r => setTimeout(r, 200));
+
+    let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
+    list.forEach(i=>{
+      html += `<div style="margin-bottom:10px;">${i.expect}期<br>`;
+      if (i.top && i.top.length > 0) {
+          html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
+      }
+      html += `🎯 推荐：<span style="word-break:break-all;">${(i.nums || []).join(",")}</span><br>`;
+      // 把 zodiacNums 转换成生肖名称
+      let zodiacNames = (i.zodiacNums || []).join('、');  // 直接拼接
+      html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames  || '无'}</span><br>`;
+      let openZodiac = getZodiac(i.open);
+      html += `🎲 开奖：<b style="color:#ff5722;">${i.open}</b>（${openZodiac}）<br>`;
+      if (i.nums.length === 0) {
+          html += "⚠️ 无预测";
+      } else {
+          html += i.hitNums ? "✅ 推荐命中" : "❌ 推荐未中";
+          html += i.hitZodiac ? "✅ 生肖命中" : "❌ 生肖未中";
+      }
+      html += `</div><hr>`;
+    });
+
+    html += `</div>`;
+    box.innerHTML = html;
+}
+
+async function updateMarquee() {
+  let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+  try {
+    let raw = await fetchData(); // 用你的缓存函数
+    let latest = raw[0];
+    let lastId = localStorage.getItem("marqueeLastId");
+    let numsHtml = formatNums(latest.num);
+    let text = "";
+    // ⭐ 判断是否新开奖
+    if (lastId != latest.id) {
+      text = `${base}　　<span class="highlight">🆕 新开奖：${latest.qishu}期（${latest.date}）${numsHtml}</span>`;
+      localStorage.setItem("marqueeLastId", latest.id);
+    } else {
+      text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
+    }
+    // ⭐ 双倍拼接（无缝滚动）
+    document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+  } catch (e) {
+    console.log("滚动条失败", e);
+    document.getElementById("marqueeText").innerText = base;
+  }
+}
+
+// 每天9点和10点自动刷新
+function scheduleRefresh() {
+    let now = new Date();
+    let next9 = new Date();
+    next9.setHours(9, 0, 0, 0);
+    let next10 = new Date();
+    next10.setHours(18, 0, 0, 0);
+
+    let targets = [next9, next10];
+    for (let t of targets) {
+        if (t <= now) t.setDate(t.getDate() + 1);
+    }
+    let next = targets[0] < targets[1] ? targets[0] : targets[1];
+    let delay = next - now;
+
+    setTimeout(() => {
+        location.reload();
+    }, delay);
+}
+
+async function init(){
+    let box = document.getElementById("indexOut");
+    box.innerHTML = "⏳ 正在加载数据...";
+    let slowTimer = setTimeout(()=>{
+        box.innerHTML = "🐢 网络有点慢，请稍等...";
+    }, 3000);
+    let data = [];
+    try{
+        data = await fetchData();
+    }catch(e){
+        console.log("加载异常", e);
+    }
+    clearTimeout(slowTimer);
+    if(!data || !data.length){
+        box.innerHTML = `
+        ⚠️ 数据加载失败<br><br>
+        <button onclick="location.reload()">🔄 点击重试</button>
+        `;
+        return;
+    }
+    box.innerHTML = "";
+    updateMarquee();
+    await showTmAnalysis();
+}
+
+// ===== 初始化 =====
+init();
+scheduleRefresh();
+</script>
+
+</body>
+</html>
