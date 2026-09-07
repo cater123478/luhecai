@@ -575,12 +575,18 @@ async function showTmHistory(){
       if (i.top && i.top.length > 0) {
           html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
       }
-      html += `🎯 号码推荐：<span style="word-break:break-all;">${(i.nums || []).join(",")}</span><br>`;
+      // 号码推荐高亮中奖号码
+      let numsHtml = (i.nums || []).map(n => {
+          return n === i.open ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${n}</b>` : n;
+      }).join(",");
+      html += `🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>`;
       // 把 zodiacNums 转换成生肖名称
-      let zodiacNames = (i.zodiacNums || []).join('、');  // 直接拼接
-      html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames  || '无'}</span><br>`;
       let openZodiac = getZodiac(i.open);
-      html += `🎲 开奖：<b style="color:#ff5722;">${i.open}</b>（${openZodiac}）<br>`;
+      let zodiacNames = (i.zodiacNums || []);
+      let zodiacHtml = zodiacNames.map(z => {
+          return z === openZodiac ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
+      }).join('、') || '无';
+      html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
       if (i.nums.length === 0) {
           html += "⚠️ 无预测";
       } else {
