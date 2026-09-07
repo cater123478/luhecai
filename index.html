@@ -788,18 +788,13 @@ function scheduleRefresh() {
 
 // ⚠️ 配置：在这里填入你的 JSONBin.io API Key
 // 获取方式：https://jsonbin.io/login → 用GitHub登录 → Create New API Key
-const CLOUD_API_KEY = "$2a$10$idmr3285C98hx3Uv/D8n8.64MRmWVxMPV4LlqvqlTbLJZ85pebfCa";  // ← 在这里粘贴你的API Key
-const CLOUD_BIN_KEY = "cloud_bin_id";  // 存储binId的localStorage key
+const CLOUD_API_KEY = "$2a$10$idmr3285C98hx3Uv/D8n8.64MRmWVxMPV4LlqvqlTbLJZ85pebfCa";  // ← API Key
+const CLOUD_BIN_ID = "6a9e7340ac6210605aaeb7c2";  // ← 硬编码binId，避免重复创建
 const JSONBIN_API_URL = "https://api.jsonbin.io/v3";
 
-// 获取存储的binId
+// 获取存储的binId（优先使用硬编码值）
 function getCloudBinId() {
-  return localStorage.getItem(CLOUD_BIN_KEY) || "";
-}
-
-// 保存binId
-function saveCloudBinId(binId) {
-  localStorage.setItem(CLOUD_BIN_KEY, binId);
+  return CLOUD_BIN_ID || "";
 }
 
 // 从云端加载历史推荐（页面打开时自动调用）
@@ -930,12 +925,6 @@ async function saveToCloud(data) {
     }
     
     const result = await res.json();
-    
-    // 如果是首次创建，保存binId
-    if (!binId && result.metadata?.id) {
-      saveCloudBinId(result.metadata.id);
-    }
-
     return true;
 
   } catch (e) {
