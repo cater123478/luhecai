@@ -443,7 +443,7 @@ function updateResult(latest){
 
 // ===== 50期热号15码 =====
 function getHotNumbers(history, count = 15) {
-    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法（与getHotZodiacs相同逻辑）
+    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法 + 温和补冷策略
     let data = history.slice(0, 50);  // 只用最近50期
     let freq = {};           // 50期内出现次数
     let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
@@ -472,6 +472,7 @@ function getHotNumbers(history, count = 15) {
         scores.push({
             num: n,
             freq: f,
+            rawMiss: rawMiss,  // 保留原始遗漏值用于补冷
             miss: miss,
             score: score
         });
@@ -480,12 +481,54 @@ function getHotNumbers(history, count = 15) {
     // 按综合分降序排列
     scores.sort((a, b) => b.score - a.score);
 
-    // 取前count个
-    return scores.slice(0, count).map(s => s.num); // .sort((a, b) => a - b);
+    // ★ 温和补冷策略：留最后2个位置给极冷门(0次)号码
+    let result = [];
+    let used = new Set();
+    
+    // 1. 先取前 (count-2) 个非0次的高分号码
+    let normalCount = Math.max(count - 2, Math.floor(count * 0.8));  // 至少留80%给正常选
+    for (let s of scores) {
+        if (result.length >= normalCount) break;
+        if (s.freq > 0) {  // 只选出现过的
+            result.push(s.num);
+            used.add(s.num);
+        }
+    }
+    
+    // 2. 如果还不够，继续补（允许0次但优先1次以上）
+    for (let s of scores) {
+        if (result.length >= count - 2) break;
+        if (!used.has(s.num)) {
+            result.push(s.num);
+            used.add(s.num);
+        }
+    }
+    
+    // 3. 最后2个位置：给遗漏最大（最久没出）的0次号码
+    let zeroFreqNums = scores.filter(s => s.freq === 0 && !used.has(s.num));
+    // 按原始遗漏值降序（越大=越久没出=越该回补）
+    zeroFreqNums.sort((a, b) => b.rawMiss - a.rawMiss);
+    
+    for (let s of zeroFreqNums) {
+        if (result.length >= count) break;
+        result.push(s.num);
+        used.add(s.num);
+    }
+    
+    // 4. 如果0次的不够2个，用剩余最高分的补满
+    for (let s of scores) {
+        if (result.length >= count) break;
+        if (!used.has(s.num)) {
+            result.push(s.num);
+            used.add(s.num);
+        }
+    }
+
+    return result; // 按得分排序，不按数值排序
 }
 
 function getHotZodiacs(history, count = 4) {
-    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法
+    // ⭐ 方案C：基于频率 + 遗漏值 + 过热抑制的确定性算法
     let data = history.slice(0, 50);
     let freq = {};           // 50期内出现次数
     let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
@@ -509,6 +552,12 @@ function getHotZodiacs(history, count = 4) {
         }
     }
 
+    // ★ 评分参数（方案A：降低频率权重，提升遗漏竞争力）
+    const OVERHEAT_THRESHOLD = 0.13;  // 频率超过13%才算过热（只惩罚极端过热）
+    const NORMAL_WEIGHT = 6;          // 正常频率权重（从10降到6）
+    const PENALTY_WEIGHT = 4;         // 过热惩罚权重（大幅降权）
+    const MISS_WEIGHT = 3;            // 遗漏权重（从1.5提升到3）
+
     // 计算每个生肖的综合分
     let scores = [];
     for (let zodiac of ALL_ZODIACS) {
@@ -516,16 +565,20 @@ function getHotZodiacs(history, count = 4) {
         let rawMiss = lastAppearIndex[zodiac] !== undefined ? lastAppearIndex[zodiac] : 999;
         // ★ 遗漏值上限为50（避免极冷门生肖分数虚高）
         let missValue = Math.min(rawMiss, 50);
-        
-        // ★ 综合评分公式
-        // 频率分（基础分）+ 遗漏加成（冷门回补）
-        // 权重：频率占主导，遗漏作为调节因子
-        let score = f * 10 + Math.sqrt(missValue) * 1.5;  // 用平方根让遗漏加分递减
+
+        // ★ 过热检测与抑制
+        let freqRate = f / 50;
+        let freqWeight = (freqRate > OVERHEAT_THRESHOLD) ? PENALTY_WEIGHT : NORMAL_WEIGHT;
+
+        // ★ 综合评分公式：频率 × 权重 + √遗漏值 × 遗漏权重
+        let score = f * freqWeight + Math.sqrt(missValue) * MISS_WEIGHT;
         
         scores.push({
             zodiac: zodiac,
             freq: f,
+            freqRate: freqRate,
             miss: missValue,
+            weight: freqWeight,
             score: score
         });
     }
@@ -533,7 +586,7 @@ function getHotZodiacs(history, count = 4) {
     // 按综合分降序排列
     scores.sort((a, b) => b.score - a.score);
 
-    // 取前4个
+    // 取前count个
     return scores.slice(0, count).map(s => s.zodiac);
 }
 
