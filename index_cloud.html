@@ -322,7 +322,7 @@ async function showTmAnalysis(forceUpdate=false){
     updateResult(latest);
 
     // ⭐ 只算热号15码
-    let hot15 = getHotNumbers(history);
+    let hot15 = getHot15(history);
 
     currentAnalysis = {
         nums: hot15,
@@ -442,99 +442,61 @@ function updateResult(latest){
 }
 
 // ===== 50期热号15码 =====
-function getHotNumbers(history, count = 15) {
-    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法（与getHotZodiacs相同逻辑）
-    let data = history.slice(0, 50);  // 只用最近50期
-    let freq = {};           // 50期内出现次数
-    let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
-
-    for (let i = 0; i < data.length; i++) {
-        let num = data[i][6];
+function getHot15(history) {
+    let freq = {};
+    for (let p of history.slice(0, 50)) {
+        let num = p[6];
         freq[num] = (freq[num] || 0) + 1;
-        
-        // 记录最后出现的位置（i越小=越近期）
-        if (lastAppearIndex[num] === undefined || i < lastAppearIndex[num]) {
-            lastAppearIndex[num] = i;
+    }
+    let sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+
+    // 取前12个高频号
+    let hot12 = sorted.slice(0, 12).map(Number);
+
+    // 找最近5期出现1次的号码
+    let recent = history.slice(0, 5);
+    let recentFreq = {};
+    for (let p of recent) {
+        let num = p[6];
+        recentFreq[num] = (recentFreq[num] || 0) + 1;
+    }
+    let candidates = Object.keys(recentFreq).filter(k => recentFreq[k] === 1).map(Number);
+    candidates = candidates.filter(n => !hot12.includes(n));
+
+    // 不够3个，从近10期出现1次的补
+    if (candidates.length < 3) {
+        let recent10 = history.slice(0, 10);
+        let freq10 = {};
+        for (let p of recent10) {
+            let num = p[6];
+            freq10[num] = (freq10[num] || 0) + 1;
         }
+        let more = Object.keys(freq10).filter(k => freq10[k] === 1).map(Number);
+        more = more.filter(n => !hot12.includes(n) && !candidates.includes(n));
+        candidates = candidates.concat(more);
     }
 
-    // 计算每个号码的综合分
-    let scores = [];
-    for (let n = 1; n <= 49; n++) {
-        let f = freq[n] || 0;
-        let rawMiss = lastAppearIndex[n] !== undefined ? lastAppearIndex[n] : 999;
-        // ★ 遗漏值上限为50（避免极冷门号码分数虚高）
-        let miss = Math.min(rawMiss, 50);
-        
-        // ★ 综合评分公式：频率 × 10 + √遗漏值 × 1.5
-        let score = f * 10 + Math.sqrt(miss) * 1.5;
-        
-        scores.push({
-            num: n,
-            freq: f,
-            miss: miss,
-            score: score
-        });
+    // 还不够，从高频池第13-18名补
+    if (candidates.length < 3) {
+        let backup = sorted.slice(12, 18).map(Number);
+        backup = backup.filter(n => !hot12.includes(n) && !candidates.includes(n));
+        candidates = candidates.concat(backup);
     }
 
-    // 按综合分降序排列
-    scores.sort((a, b) => b.score - a.score);
-
-    // 取前count个
-    return scores.slice(0, count).map(s => s.num); // .sort((a, b) => a - b);
+    let hot15 = [...hot12, ...candidates.slice(0, 3)];
+    return hot15.sort((a, b) => a - b);
 }
 
-function getHotZodiacs(history, count = 4) {
-    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法
-    let data = history.slice(0, 50);
-    let freq = {};           // 50期内出现次数
-    let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
-    
-    // 12生肖列表
-    const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
-    
-    // 提前读取一次原始数据
-    let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-
-    for (let i = 0; i < data.length; i++) {
-        let num = data[i][6];
+function getHotZodiacs(history) {
+    let freq = {};
+    for (let p of history.slice(0, 50)) {
+        let num = p[6];
         let zodiac = getZodiac(num);
         if (!zodiac) continue;
-        
         freq[zodiac] = (freq[zodiac] || 0) + 1;
-        
-        // 记录最后出现的位置（i越小=越近期）
-        if (lastAppearIndex[zodiac] === undefined || i < lastAppearIndex[zodiac]) {
-            lastAppearIndex[zodiac] = i;
-        }
     }
-
-    // 计算每个生肖的综合分
-    let scores = [];
-    for (let zodiac of ALL_ZODIACS) {
-        let f = freq[zodiac] || 0;
-        let rawMiss = lastAppearIndex[zodiac] !== undefined ? lastAppearIndex[zodiac] : 999;
-        // ★ 遗漏值上限为50（避免极冷门生肖分数虚高）
-        let missValue = Math.min(rawMiss, 50);
-        
-        // ★ 综合评分公式
-        // 频率分（基础分）+ 遗漏加成（冷门回补）
-        // 权重：频率占主导，遗漏作为调节因子
-        let score = f * 10 + Math.sqrt(missValue) * 1.5;  // 用平方根让遗漏加分递减
-        
-        scores.push({
-            zodiac: zodiac,
-            freq: f,
-            miss: missValue,
-            score: score
-        });
-    }
-
-    // 按综合分降序排列
-    scores.sort((a, b) => b.score - a.score);
-
-    // 取前4个
-    return scores.slice(0, count).map(s => s.zodiac);
+    let sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+    return sorted.slice(0, 4);  // ⭐ 直接返回生肖名称数组
 }
 
 function renderTm(result, currentPeriod) {
@@ -547,7 +509,7 @@ function renderTm(result, currentPeriod) {
         history = getHistory(raw);
     } catch (e) {}
 
-    let nums = getHotNumbers(history);
+    let nums = getHot15(history);
     let label = `热号15码`;
 
     // renderTm 里，计算完 nums 后
@@ -570,7 +532,7 @@ function renderTm(result, currentPeriod) {
     <div class="card tm">
     🔥 当前${currentPeriod}期分析<br><br>
     🎯 号码推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
-    🐭 生肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
+    🐭 4肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
     </div>`;
 }
 
@@ -689,8 +651,8 @@ async function showTmHistory(){
       let zodiacNames = (i.zodiacNums || []);
       let zodiacHtml = zodiacNames.map(z => {
           return z === openZodiac ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
-      }).join('、') || '';
-      html += `🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
+      }).join('、') || '无';
+      html += `🐭 4肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
       if (i.nums.length === 0) {
           html += "⚠️ 无预测";
       } else if (i.open === null || i.open === undefined) {
