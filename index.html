@@ -694,9 +694,9 @@ function renderTm(result, currentPeriod) {
         // ★ 只在该层级的第一个元素前加图标
         let prefix = '';
         if (!shownLevels.has(level)) {
-            if (level === 'core') prefix = '🔥 ';
-            else if (level === 'supplement') prefix = '⭐ ';
-            else if (level === 'cold') prefix = '💎 ';
+            if (level === 'core') prefix = '🔥';
+            else if (level === 'supplement') prefix = '⭐';
+            else if (level === 'cold') prefix = '💎';
             shownLevels.add(level);
         }
         
