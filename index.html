@@ -109,7 +109,7 @@ h2{text-align:center;}
   <div id="marqueeText" class="marquee-text"></div>
 </div>
 <h2>🔥 玩彩小助手</h2>
-<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>
+<!--<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>-->
 <button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
 <button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
 <button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
@@ -851,7 +851,7 @@ async function loadHistory(){
     loading = true;
 
     let box = document.getElementById("history");
-    box.innerHTML = "⏳ 正在加载开奖数据...";
+    box.innerHTML = "⏳ 正在加载历史开奖数据...";
     await new Promise(r => setTimeout(r, 300));
     let list = await fetchData();
     if(!list || !list.length){
@@ -1365,6 +1365,11 @@ async function init(){
             let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
             let text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
             document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+            
+            // ★ 优化：立即用缓存数据渲染分析结果（不等网络）
+            let currentPeriod = Number(latest.qishu) + 1;
+            updateResult(latest);
+            renderTm({top: [], kill: []}, currentPeriod);  // 用缓存数据渲染
         } else {
             document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
         }
@@ -1372,21 +1377,15 @@ async function init(){
         document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
     }
     
-    box.innerHTML = "⏳ 正在连接服务器...";
-    let slowTimer = setTimeout(()=>{
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        box.innerHTML = `🐢 网络较慢（已等待${elapsed}秒），请稍等...<br><small>可能原因：防火墙/代理/网络问题</small>`;
-    }, 5000);
-
-    // 自动从云端加载历史推荐（如果配置了API Key）
-    if (CLOUD_API_KEY) {
-      await loadFromCloud();
-    }
-
-    box.innerHTML = "⏳ 正在获取开奖数据...";
+    // ★ 后台静默获取数据（不阻塞界面）
     let data = [];
     let useCache = false;
     
+    // 自动从云端加载历史推荐（如果配置了API Key）- 改为非阻塞
+    if (CLOUD_API_KEY) {
+        loadFromCloud().catch(e => console.log("云端加载失败:", e));
+    }
+
     try{
         data = await fetchData();
         
@@ -1397,9 +1396,7 @@ async function init(){
                 try {
                     data = JSON.parse(cacheStr);
                     useCache = true;
-                } catch(e) {
-                    // 缓存解析失败
-                }
+                } catch(e) {}
             }
         }
     }catch(e){
@@ -1409,12 +1406,9 @@ async function init(){
             try {
                 data = JSON.parse(cacheStr);
                 useCache = true;
-            } catch(e2) {
-                // 缓存也解析失败
-            }
+            } catch(e2) {}
         }
     }
-    clearTimeout(slowTimer);
     
     if(!data || !data.length){
         box.innerHTML = `
@@ -1431,12 +1425,24 @@ async function init(){
         return;
     }
     
-    box.innerHTML = "";
-    if (useCache) {
-        box.innerHTML += `<div style="color:#ff9800;font-size:12px;margin-bottom:10px;">⚠️ 当前使用的是缓存数据（网络可能有问题）</div>`;
+    // ★ 数据获取完成，更新显示（如果有新数据）
+    let latest = data[0];
+    let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    let cacheLatest = cache && cache.length > 0 ? cache[0] : null;
+    
+    // 检查是否有新数据（期号不同或数据更新）
+    let hasNewData = !cacheLatest || latest.qishu !== cacheLatest.qishu;
+    
+    if (hasNewData) {
+        // 有新数据，重新渲染
+        box.innerHTML = "";
+        updateMarquee(latest);
+        await showTmAnalysis();
+        showToast(`✅ 已更新至最新期`);
+    } else {
+        // 数据没变，toast提示
+        showToast(`✅ 数据已是最新`);
     }
-    updateMarquee(data[0]);  // 传入已获取的数据，不再重复请求
-    await showTmAnalysis();
 }
 
 // ===== 初始化 =====
