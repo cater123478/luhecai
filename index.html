@@ -1425,22 +1425,22 @@ async function init(){
         return;
     }
     
-    // ★ 数据获取完成，更新显示（如果有新数据）
+    // ★ 数据获取完成，更新显示
     let latest = data[0];
+    
+    // ★ 每次都重新渲染（确保日期轮换等实时因子生效）
+    box.innerHTML = "";
+    updateMarquee(latest);
+    await showTmAnalysis();
+    
+    // 检查是否有新期号，显示对应提示
     let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
     let cacheLatest = cache && cache.length > 0 ? cache[0] : null;
-    
-    // 检查是否有新数据（期号不同或数据更新）
     let hasNewData = !cacheLatest || latest.qishu !== cacheLatest.qishu;
     
     if (hasNewData) {
-        // 有新数据，重新渲染
-        box.innerHTML = "";
-        updateMarquee(latest);
-        await showTmAnalysis();
         showToast(`✅ 已更新至最新期`);
     } else {
-        // 数据没变，toast提示
         showToast(`✅ 数据已是最新`);
     }
 }
