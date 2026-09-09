@@ -443,18 +443,35 @@ function updateResult(latest){
 
 // ===== 50期热号15码 =====
 function getHotNumbers(history, count = 15) {
-    // ⭐ 方案C：基于频率 + 遗漏值的确定性算法 + 温和补冷策略
+    // ⭐ 方案C升级版：频率 + 遗漏值 + 连续遗漏 + 温和补冷 + 分层输出
     let data = history.slice(0, 50);  // 只用最近50期
     let freq = {};           // 50期内出现次数
     let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
+    let consecutiveMiss = {};// ★ 连续遗漏值（从最近一期开始连续没出的期数）
 
     for (let i = 0; i < data.length; i++) {
-        let num = data[i][6];
+        let num = data[i][6];  // ★ 只看特码（第7个号码，索引6）
         freq[num] = (freq[num] || 0) + 1;
         
         // 记录最后出现的位置（i越小=越近期）
         if (lastAppearIndex[num] === undefined || i < lastAppearIndex[num]) {
             lastAppearIndex[num] = i;
+        }
+    }
+
+    // ★ 计算连续遗漏值
+    for (let n = 1; n <= 49; n++) {
+        consecutiveMiss[n] = 0;
+        // 从最新一期往前遍历，找连续没出现的期数（只看特码）
+        for (let i = 0; i < data.length; i++) {
+            if (data[i][6] === n) {  // ★ 只检查特码位置
+                break;
+            }
+            consecutiveMiss[n]++;
+        }
+        // 如果50期都没出，连续遗漏=50（或更多）
+        if (lastAppearIndex[n] === undefined) {
+            consecutiveMiss[n] = 50;
         }
     }
 
@@ -465,15 +482,17 @@ function getHotNumbers(history, count = 15) {
         let rawMiss = lastAppearIndex[n] !== undefined ? lastAppearIndex[n] : 999;
         // ★ 遗漏值上限为50（避免极冷门号码分数虚高）
         let miss = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[n], 50);  // 连续遗漏也限制上限
         
-        // ★ 综合评分公式：频率 × 10 + √遗漏值 × 1.5
-        let score = f * 10 + Math.sqrt(miss) * 1.5;
+        // ★ 升级版评分公式：频率 × 权重 + √遗漏 × 遗漏权重 + 连续遗漏 × 连续权重
+        let score = f * 6 + Math.sqrt(miss) * 3 + consec * 0.3;
         
         scores.push({
             num: n,
             freq: f,
-            rawMiss: rawMiss,  // 保留原始遗漏值用于补冷
+            rawMiss: rawMiss,
             miss: miss,
+            consecutiveMiss: consec,  // ★ 新增：连续遗漏
             score: score
         });
     }
@@ -481,37 +500,36 @@ function getHotNumbers(history, count = 15) {
     // 按综合分降序排列
     scores.sort((a, b) => b.score - a.score);
 
-    // ★ 温和补冷策略：留最后2个位置给极冷门(0次)号码
+    // ★ 温和补冷策略 + 分层选择
     let result = [];
     let used = new Set();
     
     // 1. 先取前 (count-2) 个非0次的高分号码
-    let normalCount = Math.max(count - 2, Math.floor(count * 0.8));  // 至少留80%给正常选
+    let normalCount = Math.max(count - 2, Math.floor(count * 0.8));
     for (let s of scores) {
         if (result.length >= normalCount) break;
-        if (s.freq > 0) {  // 只选出现过的
-            result.push(s.num);
+        if (s.freq > 0) {
+            result.push({num: s.num, level: 'normal', ...s});
             used.add(s.num);
         }
     }
     
-    // 2. 如果还不够，继续补（允许0次但优先1次以上）
+    // 2. 如果还不够，继续补
     for (let s of scores) {
         if (result.length >= count - 2) break;
         if (!used.has(s.num)) {
-            result.push(s.num);
+            result.push({num: s.num, level: 'supplement', ...s});
             used.add(s.num);
         }
     }
     
     // 3. 最后2个位置：给遗漏最大（最久没出）的0次号码
     let zeroFreqNums = scores.filter(s => s.freq === 0 && !used.has(s.num));
-    // 按原始遗漏值降序（越大=越久没出=越该回补）
     zeroFreqNums.sort((a, b) => b.rawMiss - a.rawMiss);
     
     for (let s of zeroFreqNums) {
         if (result.length >= count) break;
-        result.push(s.num);
+        result.push({num: s.num, level: 'cold', ...s});
         used.add(s.num);
     }
     
@@ -519,16 +537,33 @@ function getHotNumbers(history, count = 15) {
     for (let s of scores) {
         if (result.length >= count) break;
         if (!used.has(s.num)) {
-            result.push(s.num);
+            result.push({num: s.num, level: 'cold', ...s});
             used.add(s.num);
         }
     }
 
-    return result; // 按得分排序，不按数值排序
+    // ★ 分层标记
+    // 核心(🔥)：前5个（最高分，最可信）
+    // 补充(⭐)：中间5个（中等分数）
+    // 观察(💎)：最后5个（含冷门补位）
+    let coreCount = 5;
+    let supplementCount = 5;
+    
+    result.forEach((item, index) => {
+        if (index < coreCount) {
+            item.level = 'core';      // 🔥 核心必选
+        } else if (index < coreCount + supplementCount) {
+            item.level = 'supplement'; // ⭐ 补充选择
+        } else {
+            item.level = 'cold';      // 💎 观察冷门
+        }
+    });
+
+    return result; // 返回包含层级信息的对象数组
 }
 
 function getHotZodiacs(history, count = 4) {
-    // ⭐ 方案C：基于频率 + 遗漏值 + 过热抑制的确定性算法
+    // ⭐ 方案C升级版：频率 + 遗漏值 + 过热抑制 + 连续遗漏
     let data = history.slice(0, 50);
     let freq = {};           // 50期内出现次数
     let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
@@ -552,32 +587,51 @@ function getHotZodiacs(history, count = 4) {
         }
     }
 
-    // ★ 评分参数（方案A：降低频率权重，提升遗漏竞争力）
-    const OVERHEAT_THRESHOLD = 0.13;  // 频率超过13%才算过热（只惩罚极端过热）
-    const NORMAL_WEIGHT = 6;          // 正常频率权重（从10降到6）
-    const PENALTY_WEIGHT = 4;         // 过热惩罚权重（大幅降权）
-    const MISS_WEIGHT = 3;            // 遗漏权重（从1.5提升到3）
+    // ★ 计算连续遗漏值（从最近一期开始连续没出的期数）
+    let consecutiveMiss = {};
+    for (let z of ALL_ZODIACS) {
+        consecutiveMiss[z] = 0;
+        for (let i = 0; i < data.length; i++) {
+            let num = data[i][6];
+            let zodiac = getZodiac(num);
+            if (zodiac === z) {
+                break;
+            }
+            consecutiveMiss[z]++;
+        }
+        if (lastAppearIndex[z] === undefined) {
+            consecutiveMiss[z] = 50;
+        }
+    }
+
+    // ★ 评分参数
+    const OVERHEAT_THRESHOLD = 0.13;  // 频率超过13%才算过热
+    const NORMAL_WEIGHT = 6;          // 正常频率权重
+    const PENALTY_WEIGHT = 4;         // 过热惩罚权重
+    const MISS_WEIGHT = 3;            // 遗漏权重
+    const CONSEC_WEIGHT = 0.5;        // ★ 连续遗漏权重
 
     // 计算每个生肖的综合分
     let scores = [];
     for (let zodiac of ALL_ZODIACS) {
         let f = freq[zodiac] || 0;
         let rawMiss = lastAppearIndex[zodiac] !== undefined ? lastAppearIndex[zodiac] : 999;
-        // ★ 遗漏值上限为50（避免极冷门生肖分数虚高）
         let missValue = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[zodiac], 50);  // ★ 连续遗漏
 
         // ★ 过热检测与抑制
         let freqRate = f / 50;
         let freqWeight = (freqRate > OVERHEAT_THRESHOLD) ? PENALTY_WEIGHT : NORMAL_WEIGHT;
 
-        // ★ 综合评分公式：频率 × 权重 + √遗漏值 × 遗漏权重
-        let score = f * freqWeight + Math.sqrt(missValue) * MISS_WEIGHT;
+        // ★ 升级版综合评分公式：频率 × 权重 + √遗漏 × 遗漏权重 + 连续遗漏 × 连续权重
+        let score = f * freqWeight + Math.sqrt(missValue) * MISS_WEIGHT + consec * CONSEC_WEIGHT;
         
         scores.push({
             zodiac: zodiac,
             freq: f,
             freqRate: freqRate,
             miss: missValue,
+            consecutiveMiss: consec,  // ★ 新增：连续遗漏
             weight: freqWeight,
             score: score
         });
@@ -586,8 +640,13 @@ function getHotZodiacs(history, count = 4) {
     // 按综合分降序排列
     scores.sort((a, b) => b.score - a.score);
 
-    // 取前count个
-    return scores.slice(0, count).map(s => s.zodiac);
+    // 取前count个，并添加层级标记
+    let result = scores.slice(0, count).map((s, index) => ({
+        ...s,
+        level: index < 2 ? 'core' : (index < count - 1 ? 'supplement' : 'cold')
+    }));
+
+    return result; // 返回包含层级信息的对象数组
 }
 
 function renderTm(result, currentPeriod) {
@@ -601,15 +660,23 @@ function renderTm(result, currentPeriod) {
     } catch (e) {}
 
     let nums = getHotNumbers(history);
+    let zodiacResult = getHotZodiacs(history);
     let label = `热号15码`;
 
     // renderTm 里，计算完 nums 后
     let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
     let exist = hot15History.some(item => item.expect === currentPeriod);
     if (!exist && nums.length > 0) {
+        // ★ 保存时提取纯号码数组（用于命中判断）+ 保留层级信息
+        let pureNums = nums.map(item => item.num || item);
+        let pureZodiacs = zodiacResult.map(item => item.zodiac);
+        
         hot15History.unshift({
             expect: currentPeriod,
-            nums: nums,
+            nums: pureNums,           // 纯号码数组
+            numsWithLevel: nums,      // 带层级的完整信息
+            zodiacNums: pureZodiacs,   // 纯生肖数组
+            zodiacsWithLevel: zodiacResult,  // 带层级的生肖信息
             open: null,
             hit: false,
             date: new Date().toISOString().split('T')[0]
@@ -617,14 +684,113 @@ function renderTm(result, currentPeriod) {
         hot15History = hot15History.slice(0, 30);
         localStorage.setItem("hot15History", JSON.stringify(hot15History));
     }
-
-    let zodiacNames = getHotZodiacs(history).join('、');
+    
+    // ★ 分层格式化号码显示（方案B：组首标图标）
+    let shownLevels = new Set();  // 记录已显示图标的层级
+    let numsHtml = nums.map((item, index) => {
+        let num = item.num || item;  // 兼容旧格式
+        let level = item.level || 'normal';
+        
+        // ★ 只在该层级的第一个元素前加图标
+        let prefix = '';
+        if (!shownLevels.has(level)) {
+            if (level === 'core') prefix = '🔥 ';
+            else if (level === 'supplement') prefix = '⭐ ';
+            else if (level === 'cold') prefix = '💎 ';
+            shownLevels.add(level);
+        }
+        
+        // PC端title悬停 + 手机端点击显示
+        let title = `号码${num}: 频率${item.freq || '?'}次 | 遗漏${item.miss || '?'}期 | 连续遗漏${item.consecutiveMiss || '?'}期`;
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${item.freq || 0}, ${item.miss || 0}, ${item.consecutiveMiss || 0})" title="${title}">${prefix}${num}</span>`;
+    }).join(' ');
+    
+    // ★ 分层格式化生肖显示（方案B：组首标图标）
+    let shownZodiacLevels = new Set();
+    let zodiacHtml = zodiacResult.map((item, index) => {
+        let zodiac = item.zodiac;
+        let level = item.level || 'normal';
+        
+        let prefix = '';
+        if (!shownZodiacLevels.has(level)) {
+            if (level === 'core') prefix = '🔥 ';
+            else if (level === 'supplement') prefix = '⭐ ';
+            else if (level === 'cold') prefix = '💎 ';
+            shownZodiacLevels.add(level);
+        }
+        
+        let title = `生肖${zodiac}: 频率${item.freq || '?'}次(${(item.freqRate*100).toFixed(1)}%) | 遗漏${item.miss || '?'}期`;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${item.freq || 0}, ${(item.freqRate || 0)*100}, ${item.miss || 0})" title="${title}">${prefix}${zodiac}</span>`;
+    }).join(' ');
+    
     document.getElementById("tmOut").innerHTML = `
     <div class="card tm">
     🔥 当前${currentPeriod}期分析<br><br>
-    🎯 号码推荐：<span style="word-break:break-all;">${nums.join(",")}</span><br>
-    🐭 生肖推荐：<span style="word-break:break-all;">${zodiacNames}</span><br>
+    🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>
+    <!--<small style="color:#666;">(🔥核心5个 ⭐补充5个 💎观察5个)</small><br>--><br>
+    🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>
+    <!--<small style="color:#666;">(🔥必选 ⭐备选 💎观察)</small><br>-->
     </div>`;
+}
+
+// ★ 手机端/PC端 点击显示号码详情
+function showNumDetail(el, num, freq, miss, consecMiss) {
+    // 移除其他已打开的详情框
+    let old = document.getElementById('numDetailPopup');
+    if (old) old.remove();
+    
+    let popup = document.createElement('div');
+    popup.id = 'numDetailPopup';
+    popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
+    popup.innerHTML = `
+        <div style="font-size:24px;font-weight:bold;color:#e74c3c;margin-bottom:10px;">${num}号</div>
+        <div style="color:#333;line-height:1.8;">
+            频率：<b>${freq}</b> 次<br>
+            总遗漏：<b>${miss}</b> 期<br>
+            连续遗漏：<b>${consecMiss}</b> 期
+        </div>
+        <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
+    `;
+    document.body.appendChild(popup);
+    
+    // 点击背景关闭
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 100);
+}
+
+// ★ 手机端/PC端 点击显示生肖详情
+function showZodiacDetail(el, zodiac, freq, freqRate, miss) {
+    let old = document.getElementById('numDetailPopup');
+    if (old) old.remove();
+    
+    let popup = document.createElement('div');
+    popup.id = 'numDetailPopup';
+    popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
+    popup.innerHTML = `
+        <div style="font-size:24px;font-weight:bold;color:#3498db;margin-bottom:10px;">🐭 ${zodiac}</div>
+        <div style="color:#333;line-height:1.8;">
+            频率：<b>${freq}</b> 次<br>
+            出现率：<b>${freqRate.toFixed(1)}</b>%<br>
+            遗漏：<b>${miss}</b> 期
+        </div>
+        <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
+    `;
+    document.body.appendChild(popup);
+    
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 100);
 }
 
 async function generateBets(){
@@ -732,17 +898,30 @@ async function showTmHistory(){
       if (i.top && i.top.length > 0) {
           html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
       }
-      // 号码推荐高亮中奖号码
-      let numsHtml = (i.nums || []).map(n => {
-          return n === i.open ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${n}</b>` : n;
-      }).join(",");
+      
+      // ★ 号码推荐：支持分层显示（兼容新旧格式）
+      let numsData = i.numsWithLevel || (i.nums || []).map(n => ({num: n, level: 'normal'}));
+      let numsHtml = numsData.map(item => {
+          let num = item.num || item;
+          let level = item.level || 'normal';
+          let prefix = level === 'core' ? '🔥' : (level === 'supplement' ? '⭐' : (level === 'cold' ? '💎' : ''));
+          let isHit = num === i.open;
+          let content = isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;
+          return `${prefix}${content}`;
+      }).join(' ');
       html += `🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>`;
-      // 把 zodiacNums 转换成生肖名称
+      
+      // ★ 生肖推荐：支持分层显示（兼容新旧格式）
       let openZodiac = getZodiac(i.open);
-      let zodiacNames = (i.zodiacNums || []);
-      let zodiacHtml = zodiacNames.map(z => {
-          return z === openZodiac ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
-      }).join('、') || '';
+      let zodiacData = i.zodiacsWithLevel || (i.zodiacNums || []).map(z => ({zodiac: z, level: 'normal'}));
+      let zodiacHtml = zodiacData.map(item => {
+          let z = item.zodiac || item;
+          let level = item.level || 'normal';
+          let prefix = level === 'core' ? '🔥' : (level === 'supplement' ? '⭐' : (level === 'cold' ? '💎' : ''));
+          let isHit = z === openZodiac;
+          let content = isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
+          return `${prefix}${content}`;
+      }).join(' ') || '';
       html += `🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
       if (i.nums.length === 0) {
           html += "⚠️ 无预测";
