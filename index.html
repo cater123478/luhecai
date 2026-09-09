@@ -525,7 +525,12 @@ function getHotNumbers(history, count = 15) {
     
     // 3. 最后2个位置：给遗漏最大（最久没出）的0次号码
     let zeroFreqNums = scores.filter(s => s.freq === 0 && !used.has(s.num));
-    zeroFreqNums.sort((a, b) => b.rawMiss - a.rawMiss);
+    // ★ 基于日期轮换：遗漏相同时，每期选择不同（避免总是02/10）
+    let rotateFactor = new Date().getDate();  // 用日期做轮换因子
+    zeroFreqNums.sort((a, b) => {
+        if (b.rawMiss !== a.rawMiss) return b.rawMiss - a.rawMiss;  // 先按遗漏降序
+        return ((a.num + rotateFactor) % 49) - ((b.num + rotateFactor) % 49);  // 遗漏相同时轮换
+    });
     
     for (let s of zeroFreqNums) {
         if (result.length >= count) break;
@@ -802,27 +807,39 @@ async function generateBets(){
         return;
     }
 
-    // ⭐ 直接用热号15码生成投注方案
+    // ⭐ 直接用热号15码生成投注方案（提取纯号码 + 保留层级）
     let hot15 = currentAnalysis.nums || [];
     if (hot15.length === 0) {
         document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 暂无推荐号码</div>`;
         return;
     }
-
-    // 将15码拆分成3组，每组5码（或按你的需求分组）
-    let groups = [];
-    for (let i = 0; i < hot15.length; i += 5) {
-        groups.push(hot15.slice(i, i + 5));
-    }
+    
+    // ★ 按层级分组
+    let levelGroups = { core: [], supplement: [], cold: [] };
+    let levelLabels = { core: '🔥 核心', supplement: '⭐ 补充', cold: '💎 观察' };
+    
+    hot15.forEach(item => {
+        let num = item.num || item;
+        let level = item.level || 'normal';
+        if (levelGroups[level]) {
+            levelGroups[level].push(num);
+        } else {
+            levelGroups['supplement'].push(num);  // 兼容旧格式
+        }
+    });
 
     let html = `<div class="card tm">💰 投注方案（${hot15.length}码）<br><br>`;
 
-    groups.forEach((g, idx) => {
-        html += `方案${idx+1}：${g.join(",")}<br>`;
-    });
+    // ★ 按层级显示
+    for (let [level, nums] of Object.entries(levelGroups)) {
+        if (nums.length > 0) {
+            html += `${levelLabels[level]}：${nums.join(", ")}<br>`;
+        }
+    }
 
     // 也可以显示全部号码
-    html += `<br>📊 全部号码：${hot15.join(", ")}<br>`;
+    let allNums = hot15.map(item => item.num || item);
+    html += `<br>📊 全部号码：${allNums.join(", ")}<br>`;
     html += `</div>`;
 
     document.getElementById("betOut").innerHTML = html;
