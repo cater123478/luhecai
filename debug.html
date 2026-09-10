@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>调试：算法分析</title>
+<style>
+body{font-family:Arial;max-width:1000px;margin:20px;padding:20px;background:#f5f6fa;}
+.card{background:#fff;border-radius:12px;padding:15px;margin:15px 0;box-shadow:0 2px 6px rgba(0,0,0,0.1);}
+pre{background:#f8f9fa;padding:10px;border-radius:8px;overflow-x:auto;font-size:13px;}
+.highlight{color:#e74c3c;font-weight:bold;}
+.info{color:#2196F3;}
+.success{color:#4CAF50;font-weight:bold;}
+.warning{color:#ff9800;}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0;}
+th,td{padding:8px;text-align:left;border-bottom:1px solid #eee;}
+th{background:#f0f0f0;font-weight:bold;}
+.cold-tag{background:#e3f2fd;color:#1976d2;padding:2px 6px;border-radius:4px;font-size:12px;}
+.core-tag{background:#ffebee;color:#c62828;padding:2px 6px;border-radius:4px;font-size:12px;}
+.tab-container{display:flex;gap:10px;margin-bottom:20px;}
+.tab{padding:10px 20px;background:#fff;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:all 0.3s;}
+.tab.active{border-color:#2196F3;color:#2196F3;font-weight:bold;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+</style>
+</head>
+<body>
+<h2>🔍 算法调试分析工具</h2>
+
+<div class="tab-container">
+    <div class="tab active" onclick="switchTab('number')">📊 号码补冷分析</div>
+    <div class="tab" onclick="switchTab('zodiac')">🐉 生肖推荐分析</div>
+</div>
+
+<!-- 号码补冷分析 -->
+<div id="number-tab" class="tab-content active">
+<div id="output"></div>
+</div>
+
+<!-- 生肖推荐分析 -->
+<div id="zodiac-tab" class="tab-content">
+<div id="zodiac-output"></div>
+</div>
+
+<script>
+// 生肖映射（简化版）
+function getZodiac(num) {
+    const zodiacMap = {
+        1:'鼠', 2:'牛', 3:'虎', 4:'兔', 5:'龙', 6:'蛇',
+        7:'马', 8:'羊', 9:'猴', 10:'鸡', 11:'狗', 12:'猪',
+        13:'鼠', 14:'牛', 15:'虎', 16:'兔', 17:'龙', 18:'蛇',
+        19:'马', 20:'羊', 21:'猴', 22:'鸡', 23:'狗', 24:'猪',
+        25:'鼠', 26:'牛', 27:'虎', 28:'兔', 29:'龙', 30:'蛇',
+        31:'马', 32:'羊', 33:'猴', 34:'鸡', 35:'狗', 36:'猪',
+        37:'鼠', 38:'牛', 39:'虎', 40:'兔', 41:'龙', 42:'蛇',
+        43:'马', 44:'羊', 45:'猴', 46:'鸡', 47:'狗', 48:'猪', 49:'鼠'
+    };
+    return zodiacMap[num];
+}
+
+const NUM_RANGE = Array.from({length: 49}, (_, i) => i + 1);
+
+// 切换标签页
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tabName + '-tab').classList.add('active');
+}
+
+// 模拟号码补冷分析
+function analyzeColdNumbers(history) {
+    let data = history.slice(0, 50);
+    let freq = {};
+    let lastAppearIndex = {};
+    let consecutiveMiss = {};
+
+    for (let i = 0; i < data.length; i++) {
+        let num = data[i][6];
+        freq[num] = (freq[num] || 0) + 1;
+        
+        if (lastAppearIndex[num] === undefined || i < lastAppearIndex[num]) {
+            lastAppearIndex[num] = i;
+        }
+    }
+
+    for (let n = 1; n <= 49; n++) {
+        consecutiveMiss[n] = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i][6] === n) break;
+            consecutiveMiss[n]++;
+        }
+        if (lastAppearIndex[n] === undefined) {
+            consecutiveMiss[n] = 50;
+        }
+    }
+
+    let scores = [];
+    for (let n = 1; n <= 49; n++) {
+        let f = freq[n] || 0;
+        let rawMiss = lastAppearIndex[n] !== undefined ? lastAppearIndex[n] : 999;
+        let miss = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[n], 50);
+        let score = f * 6 + Math.sqrt(miss) * 3 + consec * 0.3;
+        
+        scores.push({
+            num: n,
+            freq: f,
+            rawMiss: rawMiss,
+            miss: miss,
+            consecutiveMiss: consec,
+            score: score
+        });
+    }
+
+    scores.sort((a, b) => b.score - a.score);
+
+    let result = [];
+    let used = new Set();
+    let normalCount = 13;
+    
+    for (let s of scores) {
+        if (result.length >= normalCount) break;
+        if (s.freq > 0) {
+            result.push({num: s.num, level: 'normal', ...s});
+            used.add(s.num);
+        }
+    }
+
+    let zeroFreqNums = scores.filter(s => s.freq === 0 && !used.has(s.num));
+    
+    return {
+        zeroFreqNums: zeroFreqNums,
+        totalZeroFreq: zeroFreqNums.length,
+        allScores: scores
+    };
+}
+
+// ★ 新增：生肖推荐分析
+function analyzeZodiacs(history) {
+    let data = history.slice(0, 50);
+    let freq = {};
+    let lastAppearIndex = {};
+    
+    const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
+
+    for (let i = 0; i < data.length; i++) {
+        let num = data[i][6];
+        let zodiac = getZodiac(num);
+        if (!zodiac) continue;
+        
+        freq[zodiac] = (freq[zodiac] || 0) + 1;
+        
+        if (lastAppearIndex[zodiac] === undefined || i < lastAppearIndex[zodiac]) {
+            lastAppearIndex[zodiac] = i;
+        }
+    }
+
+    // 计算连续遗漏
+    let consecutiveMiss = {};
+    for (let z of ALL_ZODIACS) {
+        consecutiveMiss[z] = 0;
+        for (let i = 0; i < data.length; i++) {
+            let num = data[i][6];
+            let zodiac = getZodiac(num);
+            if (zodiac === z) break;
+            consecutiveMiss[z]++;
+        }
+        if (lastAppearIndex[z] === undefined) {
+            consecutiveMiss[z] = 50;
+        }
+    }
+
+    // 计算综合分
+    const OVERHEAT_THRESHOLD = 0.13;
+    const NORMAL_WEIGHT = 6;
+    const PENALTY_WEIGHT = 4;
+    const MISS_WEIGHT = 3;
+    const CONSEC_WEIGHT = 0.5;
+
+    let scores = [];
+    for (let zodiac of ALL_ZODIACS) {
+        let f = freq[zodiac] || 0;
+        let rawMiss = lastAppearIndex[zodiac] !== undefined ? lastAppearIndex[zodiac] : 999;
+        let missValue = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[zodiac], 50);
+        
+        let freqRate = f / 50;
+        let freqWeight = (freqRate > OVERHEAT_THRESHOLD) ? PENALTY_WEIGHT : NORMAL_WEIGHT;
+
+        let score = f * freqWeight + Math.sqrt(missValue) * MISS_WEIGHT + consec * CONSEC_WEIGHT;
+        
+        scores.push({
+            zodiac: zodiac,
+            freq: f,
+            freqRate: freqRate,
+            rawMiss: rawMiss,
+            miss: missValue,
+            consecutiveMiss: consec,
+            weight: freqWeight,
+            score: score
+        });
+    }
+
+    scores.sort((a, b) => b.score - a.score);
+    
+    return {scores, ALL_ZODIACS};
+}
+
+async function debugNumber() {
+    let output = document.getElementById("output");
+    
+    try {
+        let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (!cache || cache.length === 0) {
+            output.innerHTML = '<div class="card">❌ 没有找到缓存数据，请先访问 index.html 加载数据</div>';
+            return;
+        }
+
+        let history = cache.map(i => i.num.split(',').map(Number));
+        let analysis = analyzeColdNumbers(history);
+        
+        let html = '';
+        
+        html += `<div class="card">`;
+        html += `<h3>📊 号码补冷基本信息</h3>`;
+        html += `<p>📅 当前日期：<span class="highlight">${new Date().toLocaleDateString('zh-CN')}</span> (rotateFactor = ${new Date().getDate()})</p>`;
+        html += `<p>📈 最新期号：<span class="info">${cache[0].qishu}</span> 期</p>`;
+        html += `<p>❄️ 冷门号码数量（freq=0）：<span class="highlight">${analysis.totalZeroFreq} 个</span></p>`;
+        html += `</div>`;
+
+        html += `<div class="card">`;
+        html += `<h3>❄️ 冷门号码详情（freq=0 的号码）</h3>`;
+        
+        if (analysis.zeroFreqNums.length === 0) {
+            html += `<p style="color:#ff9800;">⚠️ <b>没有 freq=0 的冷门号码！</b></p>`;
+        } else {
+            html += `<table><tr><th>号码</th><th>rawMiss</th><th>连续遗漏</th><th>score</th></tr>`;
+            
+            analysis.zeroFreqNums.forEach((item) => {
+                html += `<tr><td><b>${item.num}</b></td><td>${item.rawMiss}</td><td>${item.consecutiveMiss}</td><td>${item.score.toFixed(2)}</td></tr>`;
+            });
+            html += `</table>`;
+            
+            let missValues = analysis.zeroFreqNums.map(s => s.rawMiss);
+            let uniqueMisses = [...new Set(missValues)];
+            let hasDuplicates = missValues.length !== uniqueMisses.length;
+            
+            html += `<br><div style="background:#fff3e0;padding:15px;border-radius:8px;">`;
+            html += `<h4>🔍 关键诊断：rawMiss 是否有重复？</h4>`;
+            html += `<p>所有冷门号码的 rawMiss 值：<code>[${missValues.join(', ')}]</code></p>`;
+            
+            if (hasDuplicates) {
+                html += `<p style="color:green;">✅ 存在重复的 rawMiss 值！</p>`;
+                
+                html += `<br><h4>📅 不同日期的排序对比（修复后）</h4>`;
+                [9, 10, 11].forEach(day => {
+                    let sorted = [...analysis.zeroFreqNums];
+                    sorted.sort((a, b) => {
+                        if (b.rawMiss !== a.rawMiss) return b.rawMiss - a.rawMiss;
+                        let hashA = Math.sin(a.num * day * 17.3) * 10000;
+                        let hashB = Math.sin(b.num * day * 17.3) * 10000;
+                        return hashB - hashA;
+                    });
+                    html += `<p><b>${day}日</b> (rotateFactor=${day})：${sorted.map(s => s.num).join(', ')}</p>`;
+                });
+            } else {
+                html += `<p style="color:red;">❌ 所有 rawMiss 值都不同！</p>`;
+                
+                html += `<br><h4>💡 修复验证：不同日期的排序对比</h4>`;
+                let results = {};
+                [8, 9, 10, 11, 12].forEach(day => {
+                    let sorted = [...analysis.zeroFreqNums];
+                    sorted.sort((a, b) => {
+                        if (b.rawMiss !== a.rawMiss) return b.rawMiss - a.rawMiss;
+                        let hashA = Math.sin(a.num * day * 17.3) * 10000;
+                        let hashB = Math.sin(b.num * day * 17.3) * 10000;
+                        return hashB - hashA;
+                    });
+                    results[day] = sorted.map(s => s.num).join(',');
+                    html += `<p><b>${day}日</b>：${results[day]}</p>`;
+                });
+                
+                let allSame = Object.values(results).every(r => r === results[8]);
+                if (!allSame) {
+                    html += `<p style="color:green;font-weight:bold;background:#e8f5e9;padding:10px;border-radius:5px;">✅ 验证结果：修复成功！每天产生的补冷号码顺序都不同！</p>`;
+                }
+            }
+            html += `</div>`;
+        }
+        
+        html += `</div>`;
+        
+        output.innerHTML = html;
+        
+    } catch(e) {
+        output.innerHTML = `<div class="card">❌ 错误：${e.message}<br><pre>${e.stack}</pre></div>`;
+    }
+}
+
+// ★ 新增：生肖推荐调试
+async function debugZodiac() {
+    let output = document.getElementById("zodiac-output");
+    
+    try {
+        let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (!cache || cache.length === 0) {
+            output.innerHTML = '<div class="card">❌ 没有找到缓存数据，请先访问 index.html 加载数据</div>';
+            return;
+        }
+
+        let history = cache.map(i => i.num.split(',').map(Number));
+        let {scores, ALL_ZODIACS} = analyzeZodiacs(history);
+        
+        let html = '';
+        
+        // 基本信息
+        html += `<div class="card">`;
+        html += `<h3>🐉 生肖推荐基本信息</h3>`;
+        html += `<p>📅 当前日期：<span class="highlight">${new Date().toLocaleDateString('zh-CN')}</span></p>`;
+        html += `<p>📈 最新期号：<span class="info">${cache[0].qishu}</span> 期</p>`;
+        html += `<p>📊 分析范围：最近 50 期数据</p>`;
+        html += `</div>`;
+
+        // ★ 核心问题展示：所有12个生肖的详细数据
+        html += `<div class="card">`;
+        html += `<h3>📊 12个生肖完整排名（按综合分降序）</h3>`;
+        
+        html += `<table>`;
+        html += `<tr><th>排名</th><th>生肖</th><th>频率</th><th>频率%</th><th>遗漏值</th><th>连续遗漏</th><th>权重</th><th>综合分</th><th>状态</th></tr>`;
+        
+        scores.forEach((s, idx) => {
+            let status = s.freq <= 2 ? 
+                '<span class="cold-tag">❄️ 冷门</span>' : 
+                (s.freq >= 6 ? '<span class="core-tag">🔥 热门</span>' : '⭐ 温号');
+            
+            html += `<tr style="${idx < 4 ? 'background:#fffde7;' : ''}">
+                <td><b>${idx + 1}</b></td>
+                <td style="font-size:18px;">${s.zodiac}</td>
+                <td>${s.freq}</td>
+                <td>${(s.freqRate * 100).toFixed(1)}%</td>
+                <td>${s.miss}</td>
+                <td>${s.consecutiveMiss}</td>
+                <td>${s.weight}</td>
+                <td><b>${s.score.toFixed(2)}</b></td>
+                <td>${status}</td>
+            </tr>`;
+        });
+        html += `</table>`;
+        
+        html += `<br><div style="background:#e3f2fd;padding:15px;border-radius:8px;">`;
+        html += `<h4>🔍 问题诊断</h4>`;
+        
+        // 找出冷门但没被选中的生肖
+        let top4 = scores.slice(0, 4);
+        let coldZodiacs = scores.filter(s => s.freq <= 2);
+        let coldNotSelected = coldZodiacs.filter(s => !top4.find(t => t.zodiac === s.zodiac));
+        
+        if (coldNotSelected.length > 0) {
+            html += `<p style="color:#e74c3c;"><b>❌ 发现问题：</b>以下冷门生肖未被选中：</p>`;
+            html += `<ul>`;
+            coldNotSelected.forEach(z => {
+                html += `<li><b>${z.zodiac}</b>（频率=${z.freq}, 遗漏=${z.miss}, 连续遗漏=${z.consecutiveMiss}）</li>`;
+            });
+            html += `</ul>`;
+            html += `<p><b>原因：</b>当前算法只按综合分取前4名，冷门生肖因为频率低，分数永远不如热号。</p>`;
+        } else {
+            html += `<p style="color:green;">✅ 冷门生肖已被包含在推荐中！</p>`;
+        }
+        
+        html += `</div>`;
+        
+        // 展示新旧算法对比
+        html += `<br><div style="background:#e8f5e9;padding:15px;border-radius:8px;">`;
+        html += `<h4>✅ 新旧算法对比</h4>`;
+        
+        // 旧算法：直接取前4（模拟旧的简单逻辑）
+        let oldScores = [...scores];
+        oldScores.sort((a, b) => {
+            let scoreA = a.freq * 6 + Math.sqrt(a.miss) * 3 + a.consecutiveMiss * 0.5;
+            let scoreB = b.freq * 6 + Math.sqrt(b.miss) * 3 + b.consecutiveMiss * 0.5;
+            return scoreB - scoreA;
+        });
+        let oldResult = oldScores.slice(0, 4).map(s => s.zodiac);
+        html += `<p><b>❌ 旧算法（纯分数前4）：</b>${oldResult.join('、')}</p>`;
+        html += `<p style="color:gray;font-size:13px;">→ 问题：可能选入过热生肖（如马14%），忽略回温信号</p>`;
+        
+        // ★ 新算法：跨频率区间选择
+        // 模拟新的智能选择逻辑
+        let newResult = [];
+        let usedNew = new Set();
+        
+        // 分类
+        let categories = { overheat: [], hot: [], warm: [], cold: [] };
+        scores.forEach(s => {
+            if (s.freqRate >= 0.14) categories.overheat.push(s);
+            else if (s.freqRate >= 0.10) categories.hot.push(s);
+            else if (s.freqRate >= 0.06) categories.warm.push(s);
+            else categories.cold.push(s);
+        });
+        
+        // 选择：1热 + 2温 + 1冷（优先回温）
+        // 热
+        if (categories.hot.length > 0 && newResult.length < 4) {
+            categories.hot.sort((a, b) => (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2));
+            let pick = categories.hot[0];
+            newResult.push(pick.zodiac + '(热)');
+            usedNew.add(pick.zodiac);
+        }
+        
+        // 温（选2个，优先回温）
+        categories.warm.sort((a, b) => {
+            // 回温优先
+            let aWarming = a.consecutiveMiss <= 3 ? 1 : 0;
+            let bWarming = b.consecutiveMiss <= 3 ? 1 : 0;
+            if (aWarming !== bWarming) return bWarming - aWarming;
+            return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
+        });
+        for (let w of categories.warm) {
+            if (newResult.length >= 3) break;
+            if (!usedNew.has(w.zodiac)) {
+                newResult.push(w.zodiac + '(温)');
+                usedNew.add(w.zodiac);
+            }
+        }
+        
+        // 冷（选1个，优先回温）
+        categories.cold.sort((a, b) => {
+            // 回温优先：最近开过的排前面
+            if (a.consecutiveMiss !== b.consecutiveMiss) {
+                return a.consecutiveMiss - b.consecutiveMiss;
+            }
+            return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
+        });
+        for (let c of categories.cold) {
+            if (newResult.length >= 4) break;
+            if (!usedNew.has(c.zodiac)) {
+                newResult.push(c.zodiac + '(冷·回温)');
+                usedNew.add(c.zodiac);
+            }
+        }
+        
+        html += `<p><b>✅ 新算法（1热+2温+1冷·回温）：</b>${newResult.join('、')}</p>`;
+        html += `<p style="color:green;font-size:13px;">→ 优势：回避过热 + 覆盖中频 + 捕捉回温信号</p>`;
+        
+        // 详细说明每个选择的原因
+        html += `<br><div style="background:#fff;padding:10px;border-radius:5px;font-size:13px;">`;
+        html += `<h5>📝 新算法选择理由：</h5>`;
+        
+        // 找出过热但被排除的
+        let overheatExcluded = categories.overheat.filter(o => !usedNew.has(o.zodiac));
+        if (overheatExcluded.length > 0) {
+            html += `<p style="color:#e74c3c;">❌ <b>排除过热</b>：${overheatExcluded.map(o => o.zodiac + '(' + (o.freqRate*100).toFixed(1) + '%)').join('、')} 
+            → 频率过高，均值回归风险大</p>`;
+        }
+        
+        // 找出被选中的回温冷门
+        let warmingUpSelected = scores.filter(s => s.consecutiveMiss <= 3 && s.freqRate < 0.10 && usedNew.has(s.zodiac));
+        if (warmingUpSelected.length > 0) {
+            html += `<p style="color:#2196F3;">✅ <b>捕捉回温</b>：${warmingUpSelected.map(w => w.zodiac + '(最近' + w.consecutiveMiss + '期开出)').join('、')} 
+            → 冷门刚开，可能有连开惯性</p>`;
+        }
+        
+        html += `</div>`;
+        
+        // 用户提到的"鸡"的具体情况
+        let jiZodiac = scores.find(s => s.zodiac === '鸡');
+        if (jiZodiac) {
+            html += `<br><div style="background:#fff3e0;padding:15px;border-radius:8px;">`;
+            html += `<h4>🐔 你提到的"鸡"的情况</h4>`;
+            html += `<table style="max-width:500px;">`;
+            html += `<tr><td><b>生肖</b></td><td>${jiZodiac.zodiac}</td></tr>`;
+            html += `<tr><td><b>50期内出现次数</b></td><td>${jiZodiac.freq} 次</td></tr>`;
+            html += `<tr><td><b>出现频率</b></td><td>${(jiZodiac.freqRate * 100).toFixed(1)}%</td></tr>`;
+            html += `<tr><td><b>总遗漏值</b></td><td>${jiZodiac.miss} 期</td></tr>`;
+            html += `<tr><td><b>连续遗漏</b></td><td>${jiZodiac.consecutiveMiss} 期</td></tr>`;
+            html += `<tr><td><b>综合得分</b></td><td>${jiZodiac.score.toFixed(2)}</td></tr>`;
+            html += `<tr><td><b>在12生肖中的排名</b></td><td>第 ${scores.findIndex(s => s.zodiac === '鸡') + 1} 名</td></tr>`;
+            html += `</table>`;
+            
+            if (jiZodiac.freq <= 2) {
+                html += `<p style="color:#e74c3c;margin-top:10px;">
+                    <b>结论：</b>鸡确实是冷门生肖（频率仅 ${jiZodiac.freq} 次），但在旧算法中因为分数较低无法进入前4名。
+                    <br>新算法会通过"补冷机制"强制选入一个冷门生肖，鸡有很大机会被选中！
+                </p>`;
+            }
+            html += `</div>`;
+        }
+        
+        html += `</div>`;
+        
+        output.innerHTML = html;
+        
+    } catch(e) {
+        output.innerHTML = `<div class="card">❌ 错误：${e.message}<br><pre>${e.stack}</pre></div>`;
+    }
+}
+
+// 自动运行两个分析
+debugNumber();
+debugZodiac();
+</script>
+</body>
+</html>

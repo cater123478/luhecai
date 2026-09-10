@@ -441,217 +441,364 @@ function updateResult(latest){
     }
 }
 
-// ===== 50期热号15码 =====
-function getHotNumbers(history, count = 15) {
-    // ⭐ 方案C升级版：频率 + 遗漏值 + 连续遗漏 + 温和补冷 + 分层输出
-    let data = history.slice(0, 50);  // 只用最近50期
-    let freq = {};           // 50期内出现次数
-    let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
-    let consecutiveMiss = {};// ★ 连续遗漏值（从最近一期开始连续没出的期数）
+// ===== 统一推荐引擎（号码+生肖共用） =====
+
+/**
+ * 通用统计计算
+ * @param {Array} history - 历史数据数组
+ * @param {Function} extractor - 从每期提取值的函数 (periodData) => value
+ * @param {Array} allItems - 所有候选项列表
+ * @param {Array|null} rawData - 原始数据（用于获取期号）
+ * @returns {Array} 每个候选项的统计数据
+ */
+function calculateStats(history, extractor, allItems, rawData = null) {
+    let data = history.slice(0, 50);
+    let freq = {};
+    let lastAppearIndex = {};
+    let lastAppearQishu = {};
+    let latestQishu = rawData && rawData.length > 0 ? parseInt(rawData[0].qishu) : 0;
 
     for (let i = 0; i < data.length; i++) {
-        let num = data[i][6];  // ★ 只看特码（第7个号码，索引6）
-        freq[num] = (freq[num] || 0) + 1;
-        
-        // 记录最后出现的位置（i越小=越近期）
-        if (lastAppearIndex[num] === undefined || i < lastAppearIndex[num]) {
-            lastAppearIndex[num] = i;
-        }
-    }
+        let value = extractor(data[i]);
+        if (value === undefined || value === null) continue;
 
-    // ★ 计算连续遗漏值
-    for (let n = 1; n <= 49; n++) {
-        consecutiveMiss[n] = 0;
-        // 从最新一期往前遍历，找连续没出现的期数（只看特码）
-        for (let i = 0; i < data.length; i++) {
-            if (data[i][6] === n) {  // ★ 只检查特码位置
-                break;
+        freq[value] = (freq[value] || 0) + 1;
+
+        if (lastAppearIndex[value] === undefined || i < lastAppearIndex[value]) {
+            lastAppearIndex[value] = i;
+            if (rawData && rawData[i]) {
+                lastAppearQishu[value] = parseInt(rawData[i].qishu);
             }
-            consecutiveMiss[n]++;
-        }
-        // 如果50期都没出，连续遗漏=50（或更多）
-        if (lastAppearIndex[n] === undefined) {
-            consecutiveMiss[n] = 50;
         }
     }
 
-    // 计算每个号码的综合分
-    let scores = [];
-    for (let n = 1; n <= 49; n++) {
-        let f = freq[n] || 0;
-        let rawMiss = lastAppearIndex[n] !== undefined ? lastAppearIndex[n] : 999;
-        // ★ 遗漏值上限为50（避免极冷门号码分数虚高）
-        let miss = Math.min(rawMiss, 50);
-        let consec = Math.min(consecutiveMiss[n], 50);  // 连续遗漏也限制上限
-        
-        // ★ 升级版评分公式：频率 × 权重 + √遗漏 × 遗漏权重 + 连续遗漏 × 连续权重
-        let score = f * 6 + Math.sqrt(miss) * 3 + consec * 0.3;
-        
-        scores.push({
-            num: n,
+    // 计算连续遗漏
+    let consecutiveMiss = {};
+    for (let item of allItems) {
+        consecutiveMiss[item] = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (extractor(data[i]) === item) break;
+            consecutiveMiss[item]++;
+        }
+        if (lastAppearIndex[item] === undefined) {
+            consecutiveMiss[item] = 50;
+        }
+    }
+
+    // 构建详细统计数据
+    let result = [];
+    for (let item of allItems) {
+        let f = freq[item] || 0;
+        let rawMiss = lastAppearIndex[item] !== undefined ? lastAppearIndex[item] : 999;
+        let missValue = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[item], 50);
+        let freqRate = f / 50;
+
+        let lastQishu = lastAppearQishu[item] || (latestQishu - 999);
+        let periodsSinceLast = latestQishu - lastQishu;
+
+        result.push({
+            id: item,
             freq: f,
+            freqRate: freqRate,
             rawMiss: rawMiss,
-            miss: miss,
-            consecutiveMiss: consec,  // ★ 新增：连续遗漏
-            score: score
+            miss: missValue,
+            consecutiveMiss: consec,
+            periodsSinceLast: periodsSinceLast,
+            lastQishu: lastQishu
         });
     }
 
-    // 按综合分降序排列
-    scores.sort((a, b) => b.score - a.score);
+    return result;
+}
 
-    // ★ 温和补冷策略 + 分层选择
+/**
+ * 频率区间分类
+ * @param {Object} item - 统计数据项
+ * @param {Object} thresholds - 阈值配置 { overheat, hot, warm }
+ * @returns {String} 分类名称
+ */
+function categorizeByFreq(item, thresholds = {}) {
+    let { overheat = 0.14, hot = 0.10, warm = 0.06 } = thresholds;
+
+    if (item.freqRate >= overheat) return 'overheat';
+    if (item.freqRate >= hot) return 'hot';
+    if (item.freqRate >= warm) return 'warm';
+    return 'cold';
+}
+
+/**
+ * 回温检测：冷门/温号在最近N期内出现过
+ * @param {Object} item - 已分类的统计项
+ * @param {Number} maxPeriods - 最大期数阈值（默认3）
+ * @returns {Boolean} 是否回温
+ */
+function checkWarmingUp(item, maxPeriods = 3) {
+    return (item.category === 'cold' || item.category === 'warm') &&
+           item.periodsSinceLast <= maxPeriods;
+}
+
+/**
+ * ★★★ 统一选择引擎 ★★★
+ * 支持：4级分类 + 过热排除 + 回温优先 + 日期轮换 + 自定义配额
+ * 
+ * @param {Array} statsData - calculateStats 返回的统计数据（需先调用 categorizeByFreq + checkWarmingUp）
+ * @param {Object} config - 配置选项：
+ *   - count: Number - 总选择数量（默认15）
+ *   - quotas: Object - 各分类配额 { overheat, hot, warm, cold }（可选，有默认值）
+ *   - scoreFn: Function - 自定义评分函数 (item) => number（可选）
+ *   - preferWarmingFor: Array - 需要回温优先的分类（默认 ['warm', 'cold']）
+ *   - displayLevels: Object - 显示层级配置 { core, supplement, cold }（百分比或固定数）
+ * @returns {Array} 选择结果（带 level 标记）
+ */
+function unifiedSelect(statsData, config = {}) {
+    let {
+        count = 15,
+        quotas = {},
+        scoreFn = null,
+        preferWarmingFor = ['warm', 'cold'],
+        displayLevels = {}
+    } = config;
+
+    // ★ 默认配额（根据总数智能分配）
+    let defaultQuotas;
+    if (count <= 4) {
+        defaultQuotas = { overheat: 0, hot: 1, warm: 2, cold: 1 };
+    } else if (count <= 10) {
+        defaultQuotas = { overheat: 0, hot: 2, warm: Math.ceil(count * 0.5), cold: Math.floor(count * 0.15) };
+    } else {
+        // 15码：热30% 温45% 冷15% 其余按分补
+        defaultQuotas = {
+            overheat: 0,
+            hot: Math.ceil(count * 0.27),
+            warm: Math.ceil(count * 0.40),
+            cold: Math.floor(count * 0.13)
+        };
+    }
+    let finalQuotas = { ...defaultQuotas, ...quotas };
+
     let result = [];
     let used = new Set();
-    
-    // 1. 先取前 (count-2) 个非0次的高分号码
-    let normalCount = Math.max(count - 2, Math.floor(count * 0.8));
-    for (let s of scores) {
-        if (result.length >= normalCount) break;
-        if (s.freq > 0) {
-            result.push({num: s.num, level: 'normal', ...s});
-            used.add(s.num);
+    let rotateFactor = new Date().getDate();
+
+    // ★ 辅助函数：在指定类别中选择（回温优先 + 日期轮换）
+    function selectFromCategory(category, maxCount, preferWarming = false) {
+        let candidates = statsData.filter(item =>
+            item.category === category && !used.has(item.id)
+        );
+
+        if (candidates.length === 0) return [];
+
+        // 排序
+        candidates.sort((a, b) => {
+            // 回温优先
+            if (preferWarming) {
+                if (a.isWarmingUp && !b.isWarmingUp) return -1;
+                if (!a.isWarmingUp && b.isWarmingUp) return 1;
+                if (a.periodsSinceLast !== b.periodsSinceLast) {
+                    return a.periodsSinceLast - b.periodsSinceLast;
+                }
+            }
+
+            // 评分排序
+            if (scoreFn) {
+                return scoreFn(b) - scoreFn(a);
+            }
+            // 默认评分：频率权重 + 遗漏权重
+            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
+            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
+            return scoreB - scoreA;
+        });
+
+        // ★ 回温优先选择 + 日期轮换
+        if (preferWarming) {
+            let warmingCandidates = candidates.filter(c => c.isWarmingUp);
+            let normalCandidates = candidates.filter(c => !c.isWarmingUp);
+
+            let selected = [];
+
+            // 1. 先选回温的（日期轮换）
+            if (warmingCandidates.length > 0 && selected.length < maxCount) {
+                let warmCount = Math.min(warmingCandidates.length, maxCount);
+                let warmStartIndex = (rotateFactor - 1) % warmingCandidates.length;
+
+                for (let i = 0; i < warmCount && selected.length < maxCount; i++) {
+                    let idx = (warmStartIndex + i) % warmingCandidates.length;
+                    selected.push(warmingCandidates[idx]);
+                }
+            }
+
+            // 2. 再从非回温中选（日期轮换，不同偏移）
+            if (normalCandidates.length > 0 && selected.length < maxCount) {
+                let remaining = maxCount - selected.length;
+                let normalStartIndex = (rotateFactor) % normalCandidates.length;
+
+                for (let i = 0; i < remaining && selected.length < maxCount; i++) {
+                    let idx = (normalStartIndex + i) % normalCandidates.length;
+                    selected.push(normalCandidates[idx]);
+                }
+            }
+
+            return selected;
         }
-    }
-    
-    // 2. 如果还不够，继续补
-    for (let s of scores) {
-        if (result.length >= count - 2) break;
-        if (!used.has(s.num)) {
-            result.push({num: s.num, level: 'supplement', ...s});
-            used.add(s.num);
+
+        // 不需要回温优先 → 直接日期轮换
+        if (candidates.length > maxCount) {
+            let startIndex = (rotateFactor - 1) % candidates.length;
+            let selected = [];
+
+            for (let i = 0; i < maxCount; i++) {
+                let idx = (startIndex + i) % candidates.length;
+                selected.push(candidates[idx]);
+            }
+
+            return selected;
         }
+
+        return candidates.slice(0, maxCount);
     }
-    
-    // 3. 最后2个位置：给遗漏最大（最久没出）的0次号码
-    let zeroFreqNums = scores.filter(s => s.freq === 0 && !used.has(s.num));
-    // ★ 基于日期轮换：遗漏相同时，每期选择不同（避免总是02/10）
-    let rotateFactor = new Date().getDate();  // 用日期做轮换因子
-    zeroFreqNums.sort((a, b) => {
-        if (b.rawMiss !== a.rawMiss) return b.rawMiss - a.rawMiss;  // 先按遗漏降序
-        return ((a.num + rotateFactor) % 49) - ((b.num + rotateFactor) % 49);  // 遗漏相同时轮换
-    });
-    
-    for (let s of zeroFreqNums) {
-        if (result.length >= count) break;
-        result.push({num: s.num, level: 'cold', ...s});
-        used.add(s.num);
-    }
-    
-    // 4. 如果0次的不够2个，用剩余最高分的补满
-    for (let s of scores) {
-        if (result.length >= count) break;
-        if (!used.has(s.num)) {
-            result.push({num: s.num, level: 'cold', ...s});
-            used.add(s.num);
+
+    // ★ 按类别顺序选择：hot → warm → cold → overheat（补充用）
+    const categoryOrder = ['hot', 'warm', 'cold'];
+
+    for (let cat of categoryOrder) {
+        if (finalQuotas[cat] > 0) {
+            let picks = selectFromCategory(cat, finalQuotas[cat], preferWarmingFor.includes(cat));
+            picks.forEach(p => {
+                result.push(p);
+                used.add(p.id);
+            });
         }
     }
 
-    // ★ 分层标记
-    // 核心(🔥)：前5个（最高分，最可信）
-    // 补充(⭐)：中间5个（中等分数）
-    // 观察(💎)：最后5个（含冷门补位）
-    let coreCount = 5;
-    let supplementCount = 5;
+    // ★ 如果还不够，从剩余候选中补满（优先 warm > cold > hot > overheat）
+    if (result.length < count) {
+        let remaining = statsData.filter(item => !used.has(item.id));
+        let priority = { warm: 0, cold: 1, hot: 2, overheat: 3 };
+        remaining.sort((a, b) => {
+            if (priority[a.category] !== priority[b.category]) {
+                return priority[a.category] - priority[b.category];
+            }
+            if (scoreFn) return scoreFn(b) - scoreFn(a);
+            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
+            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
+            return scoreB - scoreA;
+        });
+
+        for (let r of remaining) {
+            if (result.length >= count) break;
+            result.push(r);
+            used.add(r.id);
+        }
+    }
+
+    // ★ 分层标记（支持比例模式 <1 或绝对索引模式 >=1）
+    let isAbsoluteMode = (displayLevels.core || 0) >= 1;
+    let coreEnd, supplementEnd;
     
+    if (isAbsoluteMode) {
+        // 绝对索引模式：core=5 表示前5个
+        coreEnd = displayLevels.core || Math.ceil(count * 0.33);
+        supplementEnd = displayLevels.supplement || Math.ceil(count * 0.67);
+    } else {
+        // 比例模式：core=0.33 表示前33%
+        coreEnd = Math.ceil(count * (displayLevels.core || (count <= 5 ? 0.5 : 0.33)));
+        supplementEnd = displayLevels.supplement ? Math.ceil(count * displayLevels.supplement) : (count <= 5 ? Math.ceil(count * 0.75) : Math.ceil(count * 0.67));
+    }
+
     result.forEach((item, index) => {
-        if (index < coreCount) {
-            item.level = 'core';      // 🔥 核心必选
-        } else if (index < coreCount + supplementCount) {
-            item.level = 'supplement'; // ⭐ 补充选择
+        if (index < coreEnd) {
+            item.level = 'core';        // 🔥 核心
+        } else if (index < supplementEnd) {
+            item.level = 'supplement';  // ⭐ 补充
         } else {
-            item.level = 'cold';      // 💎 观察冷门
+            item.level = 'cold';        // 💎 观察/冷门
         }
     });
 
-    return result; // 返回包含层级信息的对象数组
+    return result;
+}
+
+// ===== 50期热号15码（使用统一引擎）=====
+function getHotNumbers(history, count = 15) {
+    // 1-49 号码列表
+    const ALL_NUMS = Array.from({ length: 49 }, (_, i) => i + 1);
+    
+    // 获取原始数据（用于期号计算）
+    let rawData = null;
+    try {
+        rawData = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    } catch(e) {}
+
+    // ★ 步骤1：计算统计
+    let stats = calculateStats(
+        history,
+        (period) => period[6],  // 提取特码（第7个号码）
+        ALL_NUMS,
+        rawData
+    );
+
+    // ★ 步骤2：分类 + 回温检测
+    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.04 };  // 号码阈值：≥8次过热, ≥5次热, ≥2次温
+    stats.forEach(item => {
+        item.category = categorizeByFreq(item, thresholds);
+        item.isWarmingUp = checkWarmingUp(item, 3);
+        // 号码额外字段
+        item.num = item.id;
+    });
+
+    // ★ 步骤3：使用统一引擎选择
+    // 号码专用评分：频率×6 + √遗漏×3 + 连续遗漏×0.3（保留原公式）
+    let numScoreFn = (item) => item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3;
+    
+    let result = unifiedSelect(stats, {
+        count: count,
+        quotas: { overheat: 0 },  // 号码：不选过热的
+        scoreFn: numScoreFn,
+        preferWarmingFor: ['warm', 'cold'],
+        displayLevels: { core: 5, supplement: 11 }  // 绝对索引：前5核心(🔥)，6-11补充(⭐)，12-15观察(💎)
+    });
+
+    return result;
 }
 
 function getHotZodiacs(history, count = 4) {
-    // ⭐ 方案C升级版：频率 + 遗漏值 + 过热抑制 + 连续遗漏
-    let data = history.slice(0, 50);
-    let freq = {};           // 50期内出现次数
-    let lastAppearIndex = {};// 最后一次出现的位置（索引，越小越近）
-    
     // 12生肖列表
     const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
     
-    // 提前读取一次原始数据
-    let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    // 获取原始数据（用于期号计算）
+    let rawData = null;
+    try {
+        rawData = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    } catch(e) {}
 
-    for (let i = 0; i < data.length; i++) {
-        let num = data[i][6];
-        let zodiac = getZodiac(num);
-        if (!zodiac) continue;
-        
-        freq[zodiac] = (freq[zodiac] || 0) + 1;
-        
-        // 记录最后出现的位置（i越小=越近期）
-        if (lastAppearIndex[zodiac] === undefined || i < lastAppearIndex[zodiac]) {
-            lastAppearIndex[zodiac] = i;
-        }
-    }
+    // ★ 步骤1：计算统计
+    let stats = calculateStats(
+        history,
+        (period) => getZodiac(period[6]),  // 提取特码对应的生肖
+        ALL_ZODIACS,
+        rawData
+    );
 
-    // ★ 计算连续遗漏值（从最近一期开始连续没出的期数）
-    let consecutiveMiss = {};
-    for (let z of ALL_ZODIACS) {
-        consecutiveMiss[z] = 0;
-        for (let i = 0; i < data.length; i++) {
-            let num = data[i][6];
-            let zodiac = getZodiac(num);
-            if (zodiac === z) {
-                break;
-            }
-            consecutiveMiss[z]++;
-        }
-        if (lastAppearIndex[z] === undefined) {
-            consecutiveMiss[z] = 50;
-        }
-    }
+    // ★ 步骤2：分类 + 回温检测
+    let thresholds = { overheat: 0.14, hot: 0.10, warm: 0.06 };  // 生肖原阈值
+    stats.forEach(item => {
+        item.category = categorizeByFreq(item, thresholds);
+        item.isWarmingUp = checkWarmingUp(item, 3);
+        // 生肖额外字段
+        item.zodiac = item.id;
+    });
 
-    // ★ 评分参数
-    const OVERHEAT_THRESHOLD = 0.13;  // 频率超过13%才算过热
-    const NORMAL_WEIGHT = 6;          // 正常频率权重
-    const PENALTY_WEIGHT = 4;         // 过热惩罚权重
-    const MISS_WEIGHT = 3;            // 遗漏权重
-    const CONSEC_WEIGHT = 0.5;        // ★ 连续遗漏权重
+    // ★ 步骤3：使用统一引擎选择
+    let result = unifiedSelect(stats, {
+        count: count,
+        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
+        scoreFn: null,  // 使用默认评分
+        preferWarmingFor: ['warm', 'cold'],
+        displayLevels: { core: 0.5 }  // 生肖：前50%核心
+    });
 
-    // 计算每个生肖的综合分
-    let scores = [];
-    for (let zodiac of ALL_ZODIACS) {
-        let f = freq[zodiac] || 0;
-        let rawMiss = lastAppearIndex[zodiac] !== undefined ? lastAppearIndex[zodiac] : 999;
-        let missValue = Math.min(rawMiss, 50);
-        let consec = Math.min(consecutiveMiss[zodiac], 50);  // ★ 连续遗漏
-
-        // ★ 过热检测与抑制
-        let freqRate = f / 50;
-        let freqWeight = (freqRate > OVERHEAT_THRESHOLD) ? PENALTY_WEIGHT : NORMAL_WEIGHT;
-
-        // ★ 升级版综合评分公式：频率 × 权重 + √遗漏 × 遗漏权重 + 连续遗漏 × 连续权重
-        let score = f * freqWeight + Math.sqrt(missValue) * MISS_WEIGHT + consec * CONSEC_WEIGHT;
-        
-        scores.push({
-            zodiac: zodiac,
-            freq: f,
-            freqRate: freqRate,
-            miss: missValue,
-            consecutiveMiss: consec,  // ★ 新增：连续遗漏
-            weight: freqWeight,
-            score: score
-        });
-    }
-
-    // 按综合分降序排列
-    scores.sort((a, b) => b.score - a.score);
-
-    // 取前count个，并添加层级标记
-    let result = scores.slice(0, count).map((s, index) => ({
-        ...s,
-        level: index < 2 ? 'core' : (index < count - 1 ? 'supplement' : 'cold')
-    }));
-
-    return result; // 返回包含层级信息的对象数组
+    return result;
 }
 
 function renderTm(result, currentPeriod) {
@@ -670,13 +817,17 @@ function renderTm(result, currentPeriod) {
 
     // renderTm 里，计算完 nums 后
     let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
-    let exist = hot15History.some(item => item.expect === currentPeriod);
-    if (!exist && nums.length > 0) {
+    if (nums.length > 0) {
         // ★ 保存时提取纯号码数组（用于命中判断）+ 保留层级信息
         let pureNums = nums.map(item => item.num || item);
         let pureZodiacs = zodiacResult.map(item => item.zodiac);
         
-        hot15History.unshift({
+        // 本地时间（无时差）
+        let now = new Date();
+        let pad = n => String(n).padStart(2, '0');
+        let localDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        
+        let newRecord = {
             expect: currentPeriod,
             nums: pureNums,           // 纯号码数组
             numsWithLevel: nums,      // 带层级的完整信息
@@ -684,10 +835,29 @@ function renderTm(result, currentPeriod) {
             zodiacsWithLevel: zodiacResult,  // 带层级的生肖信息
             open: null,
             hit: false,
-            date: new Date().toISOString().split('T')[0]
-        });
+            date: localDate
+        };
+        
+        // ★ 查找并更新或插入
+        let existIndex = hot15History.findIndex(item => item.expect === currentPeriod);
+        if (existIndex !== -1) {
+            // 已存在 → 更新（保留 open/hit 等开奖结果）
+            newRecord.open = hot15History[existIndex].open;
+            newRecord.hit = hot15History[existIndex].hit;
+            newRecord.hitNums = hot15History[existIndex].hitNums;
+            newRecord.hitTop = hot15History[existIndex].hitTop;
+            newRecord.hitZodiac = hot15History[existIndex].hitZodiac;
+            hot15History[existIndex] = newRecord;
+        } else {
+            // 不存在 → 插入到开头
+            hot15History.unshift(newRecord);
+        }
+        
         hot15History = hot15History.slice(0, 30);
         localStorage.setItem("hot15History", JSON.stringify(hot15History));
+        
+        // ★ 同步到云端
+        saveToCloud(hot15History).catch(e => console.error("云端同步失败:", e));
     }
     
     // ★ 分层格式化号码显示（方案B：组首标图标）
