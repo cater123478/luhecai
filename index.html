@@ -557,7 +557,8 @@ function unifiedSelect(statsData, config = {}) {
         quotas = {},
         scoreFn = null,
         preferWarmingFor = ['warm', 'cold'],
-        displayLevels = {}
+        displayLevels = {},
+        pureRankCategories = []  // ★ 使用纯分数排名的分类（不日期轮换）
     } = config;
 
     // ★ 默认配额（根据总数智能分配）
@@ -609,6 +610,55 @@ function unifiedSelect(statsData, config = {}) {
             let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
             return scoreB - scoreA;
         });
+
+        // ★ 纯分数排名模式（不使用日期轮换，按分数+频率均衡选取）
+        if (pureRankCategories.includes(category)) {
+            // ★ 按频率分组：0次 vs 1次及以上
+            let zeroFreq = candidates.filter(c => c.freq === 0);
+            let nonZeroFreq = candidates.filter(c => c.freq > 0);
+
+            // 各组分别排序
+            zeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.miss - a.miss));
+            nonZeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.freq * 4 + Math.sqrt(b.miss) * 2 - a.freq * 4 - Math.sqrt(a.miss) * 2));
+
+            // ★ 动态均衡分配：按实际数量比例分配（至少各1个）
+            let totalCount = zeroFreq.length + nonZeroFreq.length;
+            let zeroRatio = zeroFreq.length / totalCount;
+            let zeroCount = Math.max(Math.round(maxCount * zeroRatio), 1);
+            let nonZeroCount = maxCount - zeroCount;
+            if (nonZeroCount < 1 && maxCount > 1) { zeroCount = maxCount - 1; nonZeroCount = 1; }
+
+            // ★ 0次号用日期轮换 + 步长分散（避免集中）
+            let zeroSelected = [];
+            if (zeroFreq.length > 0 && zeroCount > 0) {
+                if (zeroFreq.length > zeroCount) {
+                    let start = (rotateFactor - 1) % zeroFreq.length;
+                    let step = Math.floor(zeroFreq.length / zeroCount);  // 步长分散
+                    for (let i = 0; i < zeroCount; i++) {
+                        zeroSelected.push(zeroFreq[(start + i * step) % zeroFreq.length]);
+                    }
+                } else {
+                    zeroSelected = zeroFreq;
+                }
+            }
+
+            // 非零次号用日期轮换
+            let nonZeroSelected = [];
+            if (nonZeroFreq.length > 0 && nonZeroCount > 0) {
+                if (nonZeroFreq.length > nonZeroCount) {
+                    let start = rotateFactor % nonZeroFreq.length;
+                    for (let i = 0; i < nonZeroCount; i++) {
+                        nonZeroSelected.push(nonZeroFreq[(start + i) % nonZeroFreq.length]);
+                    }
+                } else {
+                    nonZeroSelected = nonZeroFreq;
+                }
+            }
+
+            let selected = [...zeroSelected, ...nonZeroSelected];
+
+            return selected;
+        }
 
         // ★ 回温优先选择 + 日期轮换
         if (preferWarming) {
@@ -692,29 +742,32 @@ function unifiedSelect(statsData, config = {}) {
         }
     }
 
-    // ★ 分层标记（支持比例模式 <1 或绝对索引模式 >=1）
-    let isAbsoluteMode = (displayLevels.core || 0) >= 1;
-    let coreEnd, supplementEnd;
+    // ★ 分层标记（基于category而非index位置）
+    // hot/warm → core(🔥) / supplement(⭐)
+    // cold → cold(💎)
+    let coreRatio = displayLevels.core || (count <= 5 ? 0.5 : 0.33);
+    let isAbsoluteMode = coreRatio >= 1;
     
-    if (isAbsoluteMode) {
-        // 绝对索引模式：core=5 表示前5个
-        coreEnd = displayLevels.core || Math.ceil(count * 0.33);
-        supplementEnd = displayLevels.supplement || Math.ceil(count * 0.67);
-    } else {
-        // 比例模式：core=0.33 表示前33%
-        coreEnd = Math.ceil(count * (displayLevels.core || (count <= 5 ? 0.5 : 0.33)));
-        supplementEnd = displayLevels.supplement ? Math.ceil(count * displayLevels.supplement) : (count <= 5 ? Math.ceil(count * 0.75) : Math.ceil(count * 0.67));
-    }
-
-    result.forEach((item, index) => {
-        if (index < coreEnd) {
-            item.level = 'core';        // 🔥 核心
-        } else if (index < supplementEnd) {
-            item.level = 'supplement';  // ⭐ 补充
-        } else {
-            item.level = 'cold';        // 💎 观察/冷门
-        }
+    // 分离 hot/warm 和 cold
+    let hotWarmItems = result.filter(item => item.category === 'hot' || item.category === 'warm');
+    let coldItems = result.filter(item => item.category === 'cold');
+    
+    // hot/warm 内部分层
+    let coreEnd = isAbsoluteMode ? Math.min(coreRatio, hotWarmItems.length) : Math.ceil(hotWarmItems.length * coreRatio);
+    
+    hotWarmItems.forEach((item, index) => {
+        item.level = index < coreEnd ? 'core' : 'supplement';
     });
+    
+    // cold 全部标记为 💎
+    coldItems.forEach(item => {
+        item.level = 'cold';
+    });
+    
+    // 重新合并（保持原顺序：hot→warm→cold）
+    let coreItems = hotWarmItems.filter(i => i.level === 'core');
+    let suppItems = hotWarmItems.filter(i => i.level === 'supplement');
+    result = [...coreItems, ...suppItems, ...coldItems];
 
     return result;
 }
@@ -745,18 +798,25 @@ function getHotNumbers(history, count = 15) {
         item.isWarmingUp = checkWarmingUp(item, 3);
         // 号码额外字段
         item.num = item.id;
+        // ★ 计算评分（用于显示）
+        let coldBonus = (item.freq === 0) ? 8 : 0;
+        item.score = item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3 + coldBonus;
     });
 
     // ★ 步骤3：使用统一引擎选择
-    // 号码专用评分：频率×6 + √遗漏×3 + 连续遗漏×0.3（保留原公式）
-    let numScoreFn = (item) => item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3;
+    // 号码专用评分：频率×6 + √遗漏×3 + 连续遗漏×0.3 + 冷门补偿
+    let numScoreFn = (item) => {
+        let coldBonus = (item.freq === 0) ? 8 : 0;  // 0次号补偿分（确保能与1次号公平竞争）
+        return item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3 + coldBonus;
+    };
     
     let result = unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0 },  // 号码：不选过热的
+        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 均衡：热5 温5 冷5
         scoreFn: numScoreFn,
         preferWarmingFor: ['warm', 'cold'],
-        displayLevels: { core: 5, supplement: 11 }  // 绝对索引：前5核心(🔥)，6-11补充(⭐)，12-15观察(💎)
+        pureRankCategories: ['cold'],  // ★ cold类别：纯分数排名（不日期轮换，确保0次号入选）
+        displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
     });
 
     return result;
@@ -787,6 +847,8 @@ function getHotZodiacs(history, count = 4) {
         item.isWarmingUp = checkWarmingUp(item, 3);
         // 生肖额外字段
         item.zodiac = item.id;
+        // ★ 计算评分（用于显示）
+        item.score = item.freq * 4 + Math.sqrt(item.miss) * 2;
     });
 
     // ★ 步骤3：使用统一引擎选择
@@ -876,8 +938,8 @@ function renderTm(result, currentPeriod) {
         }
         
         // PC端title悬停 + 手机端点击显示
-        let title = `号码${num}: 频率${item.freq || '?'}次 | 遗漏${item.miss || '?'}期 | 连续遗漏${item.consecutiveMiss || '?'}期`;
-        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${item.freq || 0}, ${item.miss || 0}, ${item.consecutiveMiss || 0})" title="${title}">${prefix}${num}</span>`;
+        let title = `号码${num}: 频率${item.freq || '?'}次 | 遗漏${item.miss || '?'}期 | 连续遗漏${item.consecutiveMiss || '?'}期 | 评分${(item.score || '?').toFixed(1)}`;
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${item.freq || 0}, ${item.miss || 0}, ${item.consecutiveMiss || 0}, ${item.score || 0})" title="${title}">${prefix}${num}</span>`;
     }).join(' ');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
@@ -894,8 +956,8 @@ function renderTm(result, currentPeriod) {
             shownZodiacLevels.add(level);
         }
         
-        let title = `生肖${zodiac}: 频率${item.freq || '?'}次(${(item.freqRate*100).toFixed(1)}%) | 遗漏${item.miss || '?'}期`;
-        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${item.freq || 0}, ${(item.freqRate || 0)*100}, ${item.miss || 0})" title="${title}">${prefix}${zodiac}</span>`;
+        let title = `生肖${zodiac}: 频率${item.freq || '?'}次(${(item.freqRate*100).toFixed(1)}%) | 遗漏${item.miss || '?'}期 | 评分${(item.score || '?').toFixed(1)}`;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${item.freq || 0}, ${(item.freqRate || 0)*100}, ${item.miss || 0}, ${item.score || 0})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
     
     document.getElementById("tmOut").innerHTML = `
@@ -909,7 +971,7 @@ function renderTm(result, currentPeriod) {
 }
 
 // ★ 手机端/PC端 点击显示号码详情
-function showNumDetail(el, num, freq, miss, consecMiss) {
+function showNumDetail(el, num, freq, miss, consecMiss, score) {
     // 移除其他已打开的详情框
     let old = document.getElementById('numDetailPopup');
     if (old) old.remove();
@@ -922,7 +984,8 @@ function showNumDetail(el, num, freq, miss, consecMiss) {
         <div style="color:#333;line-height:1.8;">
             频率：<b>${freq}</b> 次<br>
             总遗漏：<b>${miss}</b> 期<br>
-            连续遗漏：<b>${consecMiss}</b> 期
+            连续遗漏：<b>${consecMiss}</b> 期<br>
+            综合评分：<b>${score.toFixed(1)}</b> 分
         </div>
         <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
     `;
@@ -940,7 +1003,7 @@ function showNumDetail(el, num, freq, miss, consecMiss) {
 }
 
 // ★ 手机端/PC端 点击显示生肖详情
-function showZodiacDetail(el, zodiac, freq, freqRate, miss) {
+function showZodiacDetail(el, zodiac, freq, freqRate, miss, score) {
     let old = document.getElementById('numDetailPopup');
     if (old) old.remove();
     
@@ -952,7 +1015,8 @@ function showZodiacDetail(el, zodiac, freq, freqRate, miss) {
         <div style="color:#333;line-height:1.8;">
             频率：<b>${freq}</b> 次<br>
             出现率：<b>${freqRate.toFixed(1)}</b>%<br>
-            遗漏：<b>${miss}</b> 期
+            遗漏：<b>${miss}</b> 期<br>
+            综合评分：<b>${score.toFixed(1)}</b> 分
         </div>
         <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
     `;
