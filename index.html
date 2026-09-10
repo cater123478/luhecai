@@ -877,6 +877,52 @@ async function loadHistory(){
     loading = false;
 }
 
+// ★ 统一解析数据数组：处理各种格式（支持多层嵌套字符串）
+function parseDataArray(arr) {
+    if (!arr) return [];
+    
+    // 情况1: 整个是字符串
+    if (typeof arr === 'string') {
+        try { arr = JSON.parse(arr); } catch(e) { 
+            console.error("parseDataArray 解析失败:", arr.substring(0, 100));
+            return []; 
+        }
+    }
+    if (!Array.isArray(arr)) return [];
+    
+    return arr.map((item, idx) => {
+        // 已经是对象且不是字符串
+        if (typeof item === 'object' && item !== null) {
+            // 额外检查：确保 .num 不是字符串格式的对象
+            if (item.num && typeof item.num === 'string' && item.num.startsWith('{')) {
+                try { item.num = JSON.parse(item.num).num; } catch(e) {}
+            }
+            return item;
+        }
+        
+        // 是字符串，尝试解析（最多尝试2次，处理双重序列化）
+        if (typeof item === 'string') {
+            item = item.trim();
+            let parsed = item;
+            // 第一次解析
+            if (parsed.startsWith('{') || parsed.startsWith('[')) {
+                try { parsed = JSON.parse(parsed); } catch(e) {}
+            }
+            // 检查是否还需要第二次解析
+            if (typeof parsed === 'string' && (parsed.startsWith('{') || parsed.startsWith('['))) {
+                try { parsed = JSON.parse(parsed); } catch(e) {}
+            }
+            // 如果最终是对象，返回
+            if (typeof parsed === 'object' && parsed !== null) return parsed;
+            // 否则包装
+            return { num: Number(parsed) || parsed, level: 'normal' };
+        }
+        
+        // 其他类型
+        return { num: item, level: 'normal' };
+    });
+}
+
 async function showTmHistory(){
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     
@@ -899,6 +945,54 @@ async function showTmHistory(){
 
     let box = document.getElementById("tmHistory");
     
+    // ★ 自动修复历史数据格式（字符串→对象）
+    let needSave = false;
+    list.forEach(i => {
+        // 修复 numsWithLevel - 尝试各种可能的错误格式
+        if (i.numsWithLevel) {
+            // 情况1: 整个数组被序列化成字符串
+            if (typeof i.numsWithLevel === 'string') {
+                try { 
+                    i.numsWithLevel = JSON.parse(i.numsWithLevel); 
+                    needSave = true; 
+                } catch(e) {}
+            }
+            // 情况2: 数组中每个元素是字符串格式的对象
+            if (Array.isArray(i.numsWithLevel) && i.numsWithLevel.length > 0) {
+                let first = i.numsWithLevel[0];
+                if (typeof first === 'string') {
+                    i.numsWithLevel = i.numsWithLevel.map(item => {
+                        try { return JSON.parse(item); } catch(e) { return item; }
+                    });
+                    needSave = true;
+                }
+            }
+        }
+        // 修复 zodiacsWithLevel - 同样处理
+        if (i.zodiacsWithLevel) {
+            if (typeof i.zodiacsWithLevel === 'string') {
+                try { 
+                    i.zodiacsWithLevel = JSON.parse(i.zodiacsWithLevel); 
+                    needSave = true; 
+                } catch(e) {}
+            }
+            if (Array.isArray(i.zodiacsWithLevel) && i.zodiacsWithLevel.length > 0) {
+                let first = i.zodiacsWithLevel[0];
+                if (typeof first === 'string') {
+                    i.zodiacsWithLevel = i.zodiacsWithLevel.map(item => {
+                        try { return JSON.parse(item); } catch(e) { return item; }
+                    });
+                    needSave = true;
+                }
+            }
+        }
+    });
+    // 如果有修复，重新保存
+    if (needSave) {
+        localStorage.setItem("hot15History", JSON.stringify(list));
+        console.log("✅ 已自动修复历史数据格式");
+    }
+    
     let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
     list.forEach(i=>{
       html += `<div style="margin-bottom:10px;">${i.expect}期`;
@@ -918,40 +1012,54 @@ async function showTmHistory(){
       
       // ★ 号码推荐：支持分层显示（兼容新旧格式）
       let numsData = i.numsWithLevel || (i.nums || []).map(n => ({num: n, level: 'normal'}));
+      // ★ 统一解析函数调用
+      numsData = parseDataArray(numsData);
       let numsHtml = numsData.map(item => {
-          let num = item.num || item;
-          let level = item.level || 'normal';
-          let prefix = level === 'core' ? '🔥' : (level === 'supplement' ? '⭐' : (level === 'cold' ? '💎' : ''));
-          let isHit = num === i.open;
-          let content = isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;
-          return `${prefix}${content}`;
-      }).join(' ');
-      html += `🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>`;
+          // ★ 提取num：处理各种嵌套格式
+          let num = item.num;
+          
+          // 如果num是对象（双重嵌套），从中提取真正值
+          while (typeof num === 'object' && num !== null) {
+              num = num.num || num.number || num.n || num.value || num.zodiac || num.name;
+          }
+          if (num === undefined || num === null) num = '?';
+          
+          let isHit = Number(num) === i.open;
+          return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;
+      }).join(', ');
+      html += `🎯 号码推荐：${numsHtml}<br>`;
       
       // ★ 生肖推荐：支持分层显示（兼容新旧格式）
       let openZodiac = getZodiac(i.open);
       let zodiacData = i.zodiacsWithLevel || (i.zodiacNums || []).map(z => ({zodiac: z, level: 'normal'}));
+      // ★ 统一解析
+      zodiacData = parseDataArray(zodiacData);
       let zodiacHtml = zodiacData.map(item => {
-          let z = item.zodiac || item;
-          let level = item.level || 'normal';
-          let prefix = level === 'core' ? '🔥' : (level === 'supplement' ? '⭐' : (level === 'cold' ? '💎' : ''));
+          // ★ 提取zodiac：处理各种嵌套格式
+          let z = item.zodiac || item.name;
+          
+          // 如果z是对象（双重嵌套），从中提取真正值
+          while (typeof z === 'object' && z !== null) {
+              z = z.zodiac || z.name || z.num || z.number;
+          }
+          if (z === undefined || z === null) z = '?';
+          
           let isHit = z === openZodiac;
-          let content = isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
-          return `${prefix}${content}`;
+          return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
       }).join(' ') || '';
-      html += `🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>`;
+      html += `🐭 生肖推荐：${zodiacHtml}<br>`;
       if (i.nums.length === 0) {
           html += "⚠️ 无预测";
       } else if (i.open === null || i.open === undefined) {
           // 未开奖的显示提示
           html += `📌 推荐已生成，等待开奖结果`;
       } else {
-          html += i.hitNums ? "✅ 号码命中" : "❌ 号码未中";
-          html += i.hitZodiac ? "✅ 生肖命中" : "❌ 生肖未中";
+          html += i.hitNums ? "✅号码命中" : "❌号码未中";
+          html += "　｜　";
+          html += i.hitZodiac ? "✅生肖命中" : "❌生肖未中";
       }
       html += `</div><hr>`;
     });
-
     html += `</div>`;
     box.innerHTML = html;
     
