@@ -790,16 +790,18 @@ function getHotNumbers(history, count = 15) {
         item.isWarmingUp = checkWarmingUp(item, 3);
         // 号码额外字段
         item.num = item.id;
-        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿
+        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿，近期惩罚
         let coldBonus = (item.freq === 0) ? 2 : 0;
-        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus;
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 近期开出惩罚
+        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
-    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2)
+    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2) - 近期惩罚
     let numScoreFn = (item) => {
         let coldBonus = (item.freq === 0) ? 2 : 0;  // 0次号小补偿
-        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus;
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 近期开出惩罚
+        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
     };
     
     let result = unifiedSelect(stats, {
@@ -839,15 +841,22 @@ function getHotZodiacs(history, count = 4) {
         item.isWarmingUp = checkWarmingUp(item, 3);
         // 生肖额外字段
         item.zodiac = item.id;
-        // ★ 计算评分（用于显示）
-        item.score = item.freq * 4 + Math.sqrt(item.miss) * 2;
+        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，近期惩罚
+        let zodiacRecentPenalty = (item.miss <= 2) ? (2 - item.miss) * 3 : 0;  // 生肖惩罚稍轻
+        item.score = item.freq * 4 + Math.sqrt(item.miss) * 2 - zodiacRecentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
+    // 生肖专用评分：频率×4 + √遗漏×2 - 近期惩罚(×3)
+    let zodiacScoreFn = (item) => {
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 3 : 0;
+        return item.freq * 4 + Math.sqrt(item.miss) * 2 - recentPenalty;
+    };
+    
     let result = unifiedSelect(stats, {
         count: count,
         quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
-        scoreFn: null,  // 使用默认评分
+        scoreFn: zodiacScoreFn,  // 使用带近期惩罚的评分
         preferWarmingFor: ['warm', 'cold'],
         displayLevels: { core: 1, supplement: 3 }  // 生肖：🔥1个 ⭐2个 💎1个
     });
@@ -955,7 +964,10 @@ function renderTm(result, currentPeriod) {
         
         // PC端title悬停 + 手机端点击显示（精简版：只显示评分和分类）
         let title = `号码${num}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
-        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', 0, 0, 0, ${score})" title="${title}">${prefix}${num}</span>`;
+        let freq = item.freq ?? 0;
+        let miss = item.miss ?? 0;
+        let consec = item.consecutiveMiss ?? 0;
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
     }).join(' ');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
@@ -975,7 +987,10 @@ function renderTm(result, currentPeriod) {
         }
         
         let title = `生肖${zodiac}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
-        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', 0, 0, 0, ${score})" title="${title}">${prefix}${zodiac}</span>`;
+        let zFreq = item.freq ?? 0;
+        let zMiss = item.miss ?? 0;
+        let zConsec = item.consecutiveMiss ?? 0;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zMiss}, ${zConsec}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
     
     document.getElementById("tmOut").innerHTML = `
