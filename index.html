@@ -404,8 +404,8 @@ function updateResult(latest){
             found = true
             if(item.open === null){
                 item.open = openNum;
-                item.hitNums = item.nums.includes(openNum);
-                item.hitTop  = item.top.includes(openNum);
+                item.hitNums = item.nums ? item.nums.map(n => String(n)).includes(String(openNum)) : false;
+                item.hitTop  = item.top ? item.top.map(n => String(n)).includes(String(openNum)) : false;
                 item.hit = item.hitTop;
                 // ⭐ 生肖命中
                 item.hitZodiac = item.zodiacNums ? item.zodiacNums.includes(getZodiac(openNum)) : false;            }
@@ -436,7 +436,10 @@ function updateResult(latest){
     let idx = hot15History.findIndex(item => item.expect === qishu);
     if (idx !== -1) {
         hot15History[idx].open = openNum;
-        hot15History[idx].hit = hot15History[idx].nums.includes(openNum);
+        hot15History[idx].hit = hot15History[idx].nums ? hot15History[idx].nums.map(n => String(n)).includes(String(openNum)) : false;
+        // ★ 同时设置 hitNums 和 hitZodiac（用于显示）
+        hot15History[idx].hitNums = hot15History[idx].nums ? hot15History[idx].nums.map(n => String(n)).includes(String(openNum)) : false;
+        hot15History[idx].hitZodiac = hot15History[idx].zodiacNums ? hot15History[idx].zodiacNums.includes(getZodiac(openNum)) : false;
         localStorage.setItem("hot15History", JSON.stringify(hot15History));
     }
 }
@@ -742,32 +745,21 @@ function unifiedSelect(statsData, config = {}) {
         }
     }
 
-    // ★ 分层标记（基于category而非index位置）
-    // hot/warm → core(🔥) / supplement(⭐)
-    // cold → cold(💎)
-    let coreRatio = displayLevels.core || (count <= 5 ? 0.5 : 0.33);
-    let isAbsoluteMode = coreRatio >= 1;
+    // ★ 分层标记：整体按评分排序后切3段（科学推荐，不固化category）
+    // 15个号统一按score高→低排序，前5→🔥，中5→⭐，后5→💎
+    let CORE_COUNT = displayLevels.core || 5;
+    let SUPP_COUNT = (displayLevels.supplement || 10) - CORE_COUNT;
     
-    // 分离 hot/warm 和 cold
-    let hotWarmItems = result.filter(item => item.category === 'hot' || item.category === 'warm');
-    let coldItems = result.filter(item => item.category === 'cold');
-    
-    // hot/warm 内部分层
-    let coreEnd = isAbsoluteMode ? Math.min(coreRatio, hotWarmItems.length) : Math.ceil(hotWarmItems.length * coreRatio);
-    
-    hotWarmItems.forEach((item, index) => {
-        item.level = index < coreEnd ? 'core' : 'supplement';
+    result.sort((a, b) => {
+        if (scoreFn) return scoreFn(b) - scoreFn(a);
+        return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
     });
     
-    // cold 全部标记为 💎
-    coldItems.forEach(item => {
-        item.level = 'cold';
+    result.forEach((item, index) => {
+        if (index < CORE_COUNT) item.level = 'core';
+        else if (index < CORE_COUNT + SUPP_COUNT) item.level = 'supplement';
+        else item.level = 'cold';
     });
-    
-    // 重新合并（保持原顺序：hot→warm→cold）
-    let coreItems = hotWarmItems.filter(i => i.level === 'core');
-    let suppItems = hotWarmItems.filter(i => i.level === 'supplement');
-    result = [...coreItems, ...suppItems, ...coldItems];
 
     return result;
 }
@@ -792,30 +784,30 @@ function getHotNumbers(history, count = 15) {
     );
 
     // ★ 步骤2：分类 + 回温检测
-    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.04 };  // 号码阈值：≥8次过热, ≥5次热, ≥2次温
+    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.02 };  // 号码阈值：≥8次过热, ≥5次热, ≥1次温(扩大warm池)
     stats.forEach(item => {
         item.category = categorizeByFreq(item, thresholds);
         item.isWarmingUp = checkWarmingUp(item, 3);
         // 号码额外字段
         item.num = item.id;
-        // ★ 计算评分（用于显示）
-        let coldBonus = (item.freq === 0) ? 8 : 0;
-        item.score = item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3 + coldBonus;
+        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿
+        let coldBonus = (item.freq === 0) ? 2 : 0;
+        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus;
     });
 
     // ★ 步骤3：使用统一引擎选择
-    // 号码专用评分：频率×6 + √遗漏×3 + 连续遗漏×0.3 + 冷门补偿
+    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2)
     let numScoreFn = (item) => {
-        let coldBonus = (item.freq === 0) ? 8 : 0;  // 0次号补偿分（确保能与1次号公平竞争）
-        return item.freq * 6 + Math.sqrt(item.miss) * 3 + item.consecutiveMiss * 0.3 + coldBonus;
+        let coldBonus = (item.freq === 0) ? 2 : 0;  // 0次号小补偿
+        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus;
     };
     
     let result = unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 均衡：热5 温5 冷5
+        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 原始配额：均衡分配
         scoreFn: numScoreFn,
         preferWarmingFor: ['warm', 'cold'],
-        pureRankCategories: ['cold'],  // ★ cold类别：纯分数排名（不日期轮换，确保0次号入选）
+        pureRankCategories: ['cold'],  // ★ cold类别：纯分数排名
         displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
     });
 
@@ -857,7 +849,7 @@ function getHotZodiacs(history, count = 4) {
         quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
         scoreFn: null,  // 使用默认评分
         preferWarmingFor: ['warm', 'cold'],
-        displayLevels: { core: 0.5 }  // 生肖：前50%核心
+        displayLevels: { core: 1, supplement: 3 }  // 生肖：🔥1个 ⭐2个 💎1个
     });
 
     return result;
@@ -873,16 +865,40 @@ function renderTm(result, currentPeriod) {
         history = getHistory(raw);
     } catch (e) {}
 
-    let nums = getHotNumbers(history);
-    let zodiacResult = getHotZodiacs(history);
-    let label = `热号15码`;
-
-    // renderTm 里，计算完 nums 后
+    // ★ 读取历史记录，判断是否为历史期
     let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
-    if (nums.length > 0) {
-        // ★ 保存时提取纯号码数组（用于命中判断）+ 保留层级信息
-        let pureNums = nums.map(item => item.num || item);
-        let pureZodiacs = zodiacResult.map(item => item.zodiac);
+    let historyRecord = hot15History.find(item => item.expect === currentPeriod);
+    let isHistory = historyRecord && (historyRecord.open !== null && historyRecord.open !== undefined);
+
+    let nums, zodiacResult;
+    
+    if (isHistory && historyRecord.nums && historyRecord.nums.length > 0) {
+        // ★ 历史期：使用当时保存的推荐数据
+        nums = historyRecord.nums;
+        zodiacResult = historyRecord.zodiacNums || [];
+    } else {
+        // ★ 当前期（未开奖）：实时计算
+        nums = getHotNumbers(history);
+        zodiacResult = getHotZodiacs(history);
+    }
+    let label = `热号15码`;
+    
+    // ★ 只有当前期（未开奖）才保存和同步
+    if (!isHistory && nums.length > 0) {
+        // ★ 精简保存：只保留必要字段（num/level/score/category）
+        let pureNums = nums.map(item => ({
+            num: item.num || item,
+            level: item.level || 'supplement',
+            score: Math.round((item.score || 0) * 100) / 100,  // 保留2位小数
+            category: item.category || ''
+        }));
+        
+        let pureZodiacs = zodiacResult.map(item => ({
+            zodiac: item.zodiac,
+            level: item.level || 'supplement',
+            score: Math.round((item.score || 0) * 100) / 100,
+            category: item.category || ''
+        }));
         
         // 本地时间（无时差）
         let now = new Date();
@@ -891,10 +907,8 @@ function renderTm(result, currentPeriod) {
         
         let newRecord = {
             expect: currentPeriod,
-            nums: pureNums,           // 纯号码数组
-            numsWithLevel: nums,      // 带层级的完整信息
-            zodiacNums: pureZodiacs,   // 纯生肖数组
-            zodiacsWithLevel: zodiacResult,  // 带层级的生肖信息
+            nums: pureNums,           // 精简号码数组
+            zodiacNums: pureZodiacs,   // 精简生肖数组
             open: null,
             hit: false,
             date: localDate
@@ -927,6 +941,8 @@ function renderTm(result, currentPeriod) {
     let numsHtml = nums.map((item, index) => {
         let num = item.num || item;  // 兼容旧格式
         let level = item.level || 'normal';
+        let score = item.score ?? '?';
+        let category = item.category || '';
         
         // ★ 只在该层级的第一个元素前加图标
         let prefix = '';
@@ -937,9 +953,9 @@ function renderTm(result, currentPeriod) {
             shownLevels.add(level);
         }
         
-        // PC端title悬停 + 手机端点击显示
-        let title = `号码${num}: 频率${item.freq || '?'}次 | 遗漏${item.miss || '?'}期 | 连续遗漏${item.consecutiveMiss || '?'}期 | 评分${(item.score || '?').toFixed(1)}`;
-        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${item.freq || 0}, ${item.miss || 0}, ${item.consecutiveMiss || 0}, ${item.score || 0})" title="${title}">${prefix}${num}</span>`;
+        // PC端title悬停 + 手机端点击显示（精简版：只显示评分和分类）
+        let title = `号码${num}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', 0, 0, 0, ${score})" title="${title}">${prefix}${num}</span>`;
     }).join(' ');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
@@ -947,6 +963,8 @@ function renderTm(result, currentPeriod) {
     let zodiacHtml = zodiacResult.map((item, index) => {
         let zodiac = item.zodiac;
         let level = item.level || 'normal';
+        let score = item.score ?? '?';
+        let category = item.category || '';
         
         let prefix = '';
         if (!shownZodiacLevels.has(level)) {
@@ -956,8 +974,8 @@ function renderTm(result, currentPeriod) {
             shownZodiacLevels.add(level);
         }
         
-        let title = `生肖${zodiac}: 频率${item.freq || '?'}次(${(item.freqRate*100).toFixed(1)}%) | 遗漏${item.miss || '?'}期 | 评分${(item.score || '?').toFixed(1)}`;
-        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${item.freq || 0}, ${(item.freqRate || 0)*100}, ${item.miss || 0}, ${item.score || 0})" title="${title}">${prefix}${zodiac}</span>`;
+        let title = `生肖${zodiac}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', 0, 0, 0, ${score})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
     
     document.getElementById("tmOut").innerHTML = `
@@ -1245,9 +1263,11 @@ async function showTmHistory(){
       }
       
       // ★ 号码推荐：支持分层显示（兼容新旧格式）
-      let numsData = i.numsWithLevel || (i.nums || []).map(n => ({num: n, level: 'normal'}));
-      // ★ 统一解析函数调用
-      numsData = parseDataArray(numsData);
+      let numsData = i.nums || [];
+      // ★ 兼容旧格式：如果是纯数字数组，转为对象
+      if (numsData.length > 0 && typeof numsData[0] !== 'object') {
+          numsData = numsData.map(n => ({num: n, level: 'normal', score: 0}));
+      }
       let numsHtml = numsData.map(item => {
           // ★ 提取num：处理各种嵌套格式
           let num = item.num;
@@ -1265,9 +1285,11 @@ async function showTmHistory(){
       
       // ★ 生肖推荐：支持分层显示（兼容新旧格式）
       let openZodiac = getZodiac(i.open);
-      let zodiacData = i.zodiacsWithLevel || (i.zodiacNums || []).map(z => ({zodiac: z, level: 'normal'}));
-      // ★ 统一解析
-      zodiacData = parseDataArray(zodiacData);
+      let zodiacData = i.zodiacNums || [];
+      // ★ 兼容旧格式：如果是纯字符串数组，转为对象
+      if (zodiacData.length > 0 && typeof zodiacData[0] !== 'object') {
+          zodiacData = zodiacData.map(z => ({zodiac: z, level: 'normal', score: 0}));
+      }
       let zodiacHtml = zodiacData.map(item => {
           // ★ 提取zodiac：处理各种嵌套格式
           let z = item.zodiac || item.name;
@@ -1288,9 +1310,16 @@ async function showTmHistory(){
           // 未开奖的显示提示
           html += `📌 推荐已生成，等待开奖结果`;
       } else {
-          html += i.hitNums ? "✅号码命中" : "❌号码未中";
+          // ★ 实时计算命中（兼容数字/字符串类型，不依赖存储的旧值）
+          let checkHit = (arr, target) => {
+              if (!arr || !target) return false;
+              let targetStr = String(target).trim();
+              return arr.some(item => String(item).trim() === targetStr);
+          };
+          html += checkHit(i.nums, i.open) ? "✅号码命中" : "❌号码未中";
           html += "　｜　";
-          html += i.hitZodiac ? "✅生肖命中" : "❌生肖未中";
+          let openZodiac = getZodiac(i.open);
+          html += checkHit(i.zodiacNums, openZodiac) ? "✅生肖命中" : "❌生肖未中";
       }
       html += `</div><hr>`;
     });
