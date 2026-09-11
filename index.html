@@ -865,6 +865,9 @@ function getHotZodiacs(history, count = 4) {
 }
 
 function renderTm(result, currentPeriod) {
+    // ★ 记录当前显示的期号（用于云端加载后重新渲染）
+    window.currentDisplayPeriod = currentPeriod;
+    
     let top30 = [...(result.top || [])].sort((a, b) => a - b);
     let kill = [...(result.kill || [])].sort((a, b) => a - b);
 
@@ -1553,6 +1556,37 @@ async function loadFromCloud() {
 
       // 保存合并后的数据
       localStorage.setItem("tmHistory", JSON.stringify(mergedData));
+      
+      // ★ 同步到 hot15History（用于历史期显示）
+      let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
+      let needUpdate = false;
+      
+      for (const cloudItem of mergedData) {
+        if (!cloudItem.expect || !cloudItem.nums) continue;
+        
+        let localIdx = hot15History.findIndex(i => i.expect === cloudItem.expect);
+        if (localIdx === -1) {
+          // 本地没有 → 添加
+          hot15History.push(cloudItem);
+          needUpdate = true;
+        } else if (!hot15History[localIdx].nums || hot15History[localIdx].nums.length === 0) {
+          // 本地为空 → 用云端数据更新
+          hot15History[localIdx] = cloudItem;
+          needUpdate = true;
+        }
+      }
+      
+      if (needUpdate) {
+        // 按期号排序
+        hot15History.sort((a, b) => (b.expect || 0) - (a.expect || 0));
+        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+        
+        // ★ 重新渲染当前期（让历史期能正确显示云端数据）
+        if (window.currentDisplayPeriod) {
+          renderTm({top: [], kill: []}, window.currentDisplayPeriod);
+        }
+      }
+      
       return mergedData;
     }
 
