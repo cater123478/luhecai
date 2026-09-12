@@ -914,13 +914,34 @@ function renderTm(result, currentPeriod) {
             zodiacResult = [];
         }
     } else {
-        // ★ 确认是当前期（未开奖）：优先用缓存，避免日期轮换导致变化
-        if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0) {
-            // 有缓存 → 直接用（同一天内稳定不变）
+        // ★ 确认是当前期（未开奖）：检查数据版本是否变化
+        // 核心逻辑：数据更新 = 推荐变化；数据不变 = 用缓存
+        
+        // 1. 获取当前最新的历史数据期号
+        let currentDataPeriod = 0;
+        try {
+            let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+            if (rawHistory && rawHistory.length > 0) {
+                // ★ 注意：原始数据用 qishu 字段，不是 expect！
+                currentDataPeriod = Math.max(...rawHistory.map(item => {
+                    let period = item.qishu || item.expect || item.period || 0;
+                    return parseInt(period) || 0;
+                }));
+            }
+        } catch (e) {}
+        
+        // 2. 获取缓存是基于哪期数据计算的
+        let cacheBasedOnPeriod = historyRecord?.basedOnPeriod || 0;
+        
+        // 3. 比较：数据版本是否变化（或者数据还没加载完）
+        if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0 
+            && cacheBasedOnPeriod === currentDataPeriod 
+            && currentDataPeriod > 0) {  // 确保数据已加载（期号>0）
+            // ✅ 数据没变（还是同一批50期数据）→ 用缓存，稳定不变
             nums = historyRecord.nums;
             zodiacResult = historyRecord.zodiacNums || [];
         } else {
-            // 无缓存 → 计算并保存（首次生成）
+            // ❌ 数据已更新（有新开奖）或 数据还没加载 → 重新计算
             let history = [];
             try {
                 let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
@@ -955,13 +976,27 @@ function renderTm(result, currentPeriod) {
         let pad = n => String(n).padStart(2, '0');
         let localDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         
+        // 获取当前最新数据期号（用于后续判断是否需要重算）
+        let basedOnPeriod = 0;
+        try {
+            let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+            if (rawHistory && rawHistory.length > 0) {
+                // ★ 注意：原始数据用 qishu 字段，不是 expect！
+                basedOnPeriod = Math.max(...rawHistory.map(item => {
+                    let period = item.qishu || item.expect || item.period || 0;
+                    return parseInt(period) || 0;
+                }));
+            }
+        } catch (e) {}
+        
         let newRecord = {
             expect: currentPeriod,
             nums: pureNums,           // 精简号码数组
             zodiacNums: pureZodiacs,   // 精简生肖数组
             open: null,
             hit: false,
-            date: localDate
+            date: localDate,
+            basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本）
         };
         
         // ★ 查找并更新或插入
