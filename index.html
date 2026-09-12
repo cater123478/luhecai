@@ -740,14 +740,10 @@ function unifiedSelect(statsData, config = {}) {
         }
     }
 
-    // ★ 如果还不够，从剩余候选中补满（优先 warm > cold > hot > overheat）
+    // ★ 如果还不够，从剩余候选中补满（纯分数排序，不按类别优先）
     if (result.length < count) {
         let remaining = statsData.filter(item => !used.has(item.id));
-        let priority = { warm: 0, cold: 1, hot: 2, overheat: 3 };
         remaining.sort((a, b) => {
-            if (priority[a.category] !== priority[b.category]) {
-                return priority[a.category] - priority[b.category];
-            }
             if (scoreFn) return scoreFn(b) - scoreFn(a);
             let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
             let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
@@ -808,15 +804,15 @@ function getHotNumbers(history, count = 15) {
         item.num = item.id;
         // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿，近期惩罚
         let coldBonus = (item.freq === 0) ? 2 : 0;
-        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 近期开出惩罚
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
         item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
-    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2) - 近期惩罚
+    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2) - 近期惩罚(×8)
     let numScoreFn = (item) => {
         let coldBonus = (item.freq === 0) ? 2 : 0;  // 0次号小补偿
-        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 近期开出惩罚
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
         return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
     };
     
@@ -825,7 +821,7 @@ function getHotNumbers(history, count = 15) {
         quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 原始配额：均衡分配
         scoreFn: numScoreFn,
         preferWarmingFor: ['warm', 'cold'],
-        pureRankCategories: ['cold'],  // ★ cold类别：纯分数排名
+        pureRankCategories: ['cold', 'warm'],  // ★ cold和warm都：纯分数排名
         displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
     });
 
@@ -858,14 +854,14 @@ function getHotZodiacs(history, count = 4) {
         // 生肖额外字段
         item.zodiac = item.id;
         // ★ 计算评分（用于显示）：频率权重高，遗漏次要，近期惩罚
-        let zodiacRecentPenalty = (item.miss <= 2) ? (2 - item.miss) * 3 : 0;  // 生肖惩罚稍轻
+        let zodiacRecentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
         item.score = item.freq * 4 + Math.sqrt(item.miss) * 2 - zodiacRecentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
-    // 生肖专用评分：频率×4 + √遗漏×2 - 近期惩罚(×3)
+    // 生肖专用评分：频率×4 + √遗漏×2 - 近期惩罚(×5)
     let zodiacScoreFn = (item) => {
-        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 3 : 0;
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
         return item.freq * 4 + Math.sqrt(item.miss) * 2 - recentPenalty;
     };
     
@@ -918,15 +914,22 @@ function renderTm(result, currentPeriod) {
             zodiacResult = [];
         }
     } else {
-        // ★ 确认是当前期（未开奖）：才实时计算
-        let history = [];
-        try {
-            let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-            history = getHistory(raw);
-        } catch (e) {}
-        
-        nums = getHotNumbers(history);
-        zodiacResult = getHotZodiacs(history);
+        // ★ 确认是当前期（未开奖）：优先用缓存，避免日期轮换导致变化
+        if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0) {
+            // 有缓存 → 直接用（同一天内稳定不变）
+            nums = historyRecord.nums;
+            zodiacResult = historyRecord.zodiacNums || [];
+        } else {
+            // 无缓存 → 计算并保存（首次生成）
+            let history = [];
+            try {
+                let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+                history = getHistory(raw);
+            } catch (e) {}
+            
+            nums = getHotNumbers(history);
+            zodiacResult = getHotZodiacs(history);
+        }
     }
     let label = `热号15码`;
     
@@ -1570,18 +1573,17 @@ async function loadFromCloud() {
             finalItem.hitZodiac = localItem.hitZodiac;
           }
           
-          // 合并nums/zodiacNums（取更完整的）
-          // ★ 特殊保护：253期必须包含16号（开奖结果）
-          if (finalItem.expect === 253) {
-            let localHas16 = localItem.nums && localItem.nums.some(n => (n.num || n) === 16);
-            let cloudHas16 = finalItem.nums && finalItem.nums.some(n => (n.num || n) === 16);
-            if (localHas16 && !cloudHas16) {
-              // 本地正确，云端错误 → 用本地的
-              finalItem.nums = localItem.nums;
-              finalItem.zodiacNums = localItem.zodiacNums || finalItem.zodiacNums;
-              console.log("🛡️ 253期保护：使用本地正确数据（含16号）");
-            }
+          // 合并nums/zodiacNums
+          // ★ 通用保护：所有已开奖的历史期，保留本地已有的推荐数据，不覆盖
+          let isHistoryPeriod = (finalItem.open !== null && finalItem.open !== undefined) || 
+                                (localItem.open !== null && localItem.open !== undefined);
+          
+          if (isHistoryPeriod && localItem.nums && localItem.nums.length > 0) {
+            // 历史期：优先用本地的推荐数据（防止被错误覆盖）
+            finalItem.nums = localItem.nums;
+            finalItem.zodiacNums = localItem.zodiacNums || finalItem.zodiacNums;
           } else if ((!finalItem.nums || finalItem.nums.length === 0) && (localItem.nums && localItem.nums.length > 0)) {
+            // 当前期或空数据：正常合并
             finalItem.nums = localItem.nums;
           }
           if ((!finalItem.zodiacNums || finalItem.zodiacNums.length === 0) && (localItem.zodiacNums && localItem.zodiacNums.length > 0)) {
@@ -1613,16 +1615,14 @@ async function loadFromCloud() {
       for (const cloudItem of mergedData) {
         if (!cloudItem.expect || !cloudItem.nums) continue;
         
-        // ★ 特殊保护：253期必须包含16号
-        if (cloudItem.expect === 253) {
-          let cloudHas16 = cloudItem.nums.some(n => (n.num || n) === 16);
-          let localRecord = hot15History.find(i => i.expect === 253);
-          let localHas16 = localRecord && localRecord.nums && localRecord.nums.some(n => (n.num || n) === 16);
-          
-          if (!cloudHas16 && localHas16) {
-            console.log("🛡️ 253期加载保护：跳过云端错误数据，保留本地正确数据");
-            continue; // 跳过这个云端的错误数据
-          }
+        // ★ 通用保护：历史期（已开奖）保留本地数据
+        let isHistoryPeriod = (cloudItem.open !== null && cloudItem.open !== undefined);
+        let localRecord = hot15History.find(i => i.expect === cloudItem.expect);
+        let localHasData = localRecord && localRecord.nums && localRecord.nums.length > 0;
+        
+        if (isHistoryPeriod && localHasData) {
+          // 历史期且本地有数据 → 跳过云端，保留本地
+          continue;
         }
         
         let localIdx = hot15History.findIndex(i => i.expect === cloudItem.expect);
@@ -1833,10 +1833,42 @@ async function fixAllHistoryData() {
     }
 }
 
-// ★ 快速修复253期数据（被错误覆盖后恢复）
-async function fixPeriod253() {
-    // 253期正确数据（包含16号）
-    let correctData = {
+// ★ 通用修复历史期数据（被错误覆盖后恢复）
+async function fixPeriodData(correctData) {
+    try {
+        // 1. 更新本地存储
+        let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+        let idx = list.findIndex(i => i.expect === correctData.expect);
+        if (idx >= 0) {
+            list[idx] = correctData;
+        } else {
+            list.push(correctData);
+        }
+        localStorage.setItem("tmHistory", JSON.stringify(list));
+        
+        // 2. 更新hot15History
+        let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
+        let hIdx = hot15List.findIndex(i => i.expect === correctData.expect);
+        if (hIdx >= 0) {
+            hot15List[hIdx] = correctData;
+        } else {
+            hot15List.push(correctData);
+        }
+        localStorage.setItem("hot15History", JSON.stringify(hot15List));
+        
+        // 3. 同步到云端
+        await saveToCloud(list);
+        return true;
+    } catch(e) {
+        console.error(`❌ 修复${correctData.expect}期失败:`, e);
+        return false;
+    }
+}
+
+// ★ 修复253期和254期的正确数据
+async function fixCorruptedPeriods() {
+    // 253期正确数据（开奖16兔）
+    let p253 = {
         expect: 253,
         date: "2026-09-11",
         nums: [
@@ -1862,44 +1894,45 @@ async function fixPeriod253() {
             {zodiac: "狗", level: "supplement", score: 18.00, category: "warm"},
             {zodiac: "鸡", level: "cold", score: 8.00, category: "cold"}
         ],
-        top: [],
-        kill: [],
-        open: 16,
-        hit: true,
-        hitNums: true,
-        hitZodiac: true
+        top: [], kill: [],
+        open: 16, hit: true,
+        hitNums: true, hitZodiac: true
     };
     
-    try {
-        // 1. 更新本地存储
-        let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-        let idx = list.findIndex(i => i.expect === 253);
-        if (idx >= 0) {
-            list[idx] = correctData;
-        } else {
-            list.push(correctData);
-        }
-        localStorage.setItem("tmHistory", JSON.stringify(list));
-        
-        // 2. 更新hot15History
-        let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
-        let hIdx = hot15List.findIndex(i => i.expect === 253);
-        if (hIdx >= 0) {
-            hot15List[hIdx] = correctData;
-        } else {
-            hot15List.push(correctData);
-        }
-        localStorage.setItem("hot15History", JSON.stringify(hot15List));
-        
-        // 3. 同步到云端
-        await saveToCloud(list);
-        
-        console.log("✅ 253期数据已修复，包含16号");
-        return true;
-    } catch(e) {
-        console.error("❌ 修复253期失败:", e);
-        return false;
-    }
+    // 254期正确数据（不含02）
+    let p254 = {
+        expect: 254,
+        date: "2026-09-11",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 3, level: "core", score: 33.46, category: "warm"},
+            {num: 47, level: "supplement", score: 33.11, category: "warm"},
+            {num: 36, level: "supplement", score: 26.14, category: "cold"},
+            {num: 45, level: "supplement", score: 26.14, category: "cold"},
+            {num: 13, level: "supplement", score: 26.14, category: "cold"},
+            {num: 25, level: "supplement", score: 26.14, category: "cold"},
+            {num: 14, level: "cold", score: 24.06, category: "warm"},
+            {num: 30, level: "cold", score: 23.23, category: "warm"},
+            {num: 12, level: "cold", score: 21.2, category: "warm"},
+            {num: 16, level: "cold", score: 20, category: "warm"},
+            {num: 22, level: "cold", score: 7.2, category: "warm"}
+        ],
+        zodiacNums: [
+            {zodiac: "鼠", level: "core", score: 24.94, category: "warm"},
+            {zodiac: "牛", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "猪", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 7, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 2, hit: true,
+        hitNums: true, hitZodiac: false
+    };
+    
+    await fixPeriodData(p253);
+    await fixPeriodData(p254);
 }
 
 async function init(){
@@ -1927,17 +1960,11 @@ async function init(){
         document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
     }
     
-    // ★ 自动修复253期数据（如果被错误覆盖）
+    // ★ 修复已知被损坏的历史期数据
     try {
-        let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
-        let p253 = hot15List.find(i => i.expect === 253);
-        // 检查253期数据是否正确（应该包含16号）
-        if (p253 && p253.nums && !p253.nums.some(n => (n.num || n) === 16)) {
-            console.log("🔧 检测到253期数据异常，正在修复...");
-            await fixPeriod253();
-        }
+        await fixCorruptedPeriods();
     } catch(e) {
-        console.log("检查253期数据跳过:", e.message);
+        console.log("历史期修复跳过:", e.message);
     }
     
     // ★ 后台静默获取数据（不阻塞界面）
