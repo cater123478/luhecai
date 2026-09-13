@@ -2185,23 +2185,46 @@ async function init(){
         return;
     }
     
-    // ★ 数据获取完成，更新显示
+    // ★ 数据获取完成，智能判断是否需要更新显示
     let latest = data[0];
+    let newLatestQishu = Number(latest.qishu) || 0;
     
-    // ★ 每次都重新渲染（确保日期轮换等实时因子生效）
-    box.innerHTML = "";
-    updateMarquee(latest);
-    await showTmAnalysis();
+    // ★ 获取当前显示基于哪期数据（数据版本号）
+    let currentBasedOnPeriod = 0;
+    try {
+        let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+        if (tmHistory && tmHistory.length > 0) {
+            // 找到当前显示期号的记录
+            let currentPeriod = newLatestQishu + 1;
+            let currentRecord = tmHistory.find(item => item.expect === currentPeriod);
+            if (currentRecord && currentRecord.basedOnPeriod) {
+                currentBasedOnPeriod = currentRecord.basedOnPeriod;
+            }
+        }
+    } catch (e) {
+        console.log("获取basedOnPeriod失败:", e.message);
+    }
     
-    // 检查是否有新期号，显示对应提示
-    let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-    let cacheLatest = cache && cache.length > 0 ? cache[0] : null;
-    let hasNewData = !cacheLatest || latest.qishu !== cacheLatest.qishu;
-    
-    if (hasNewData) {
-        showToast(`✅ 已更新至最新期`);
+    // ★ 智能判断：只有数据真的变了才刷新显示
+    if (newLatestQishu > currentBasedOnPeriod) {
+        // ✅ 有新数据 → 更新显示（值得刷一次）
+        box.innerHTML = "";
+        updateMarquee(latest);
+        await showTmAnalysis();
+        
+        showToast(`✅ 数据已更新`);
     } else {
-        showToast(`✅ 数据已是最新`);
+        // ❌ 数据没变 → 不刷新（避免无意义刷屏）
+        // 只更新滚动条和提示即可
+        updateMarquee(latest);  // 只更新滚动条
+        
+        // 静默更新缓存（不重新渲染）
+        if (!useCache) {
+            // 如果是新拉取的数据，保存到cacheHistory供下次使用
+            localStorage.setItem("cacheHistory", JSON.stringify(data));
+        }
+        
+        showToast(`✅ 数据已更新`);
     }
 }
 
