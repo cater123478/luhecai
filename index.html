@@ -112,8 +112,8 @@ h2{text-align:center;}
 <!--<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>-->
 <button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
 <button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
+<!--<button class="btn" onclick="fixCorruptedPeriods()" style="background:linear-gradient(45deg,#ff5722,#ff9800);color:#fff;">🔧 修复255期数据</button>-->
 <button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
-<!--<button class="btn" onclick="fixAllHistoryData()" style="background:linear-gradient(45deg,#ff5722,#ff9800);color:#fff;">🔧 修复历史数据</button>-->
 
 <div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
 <div id="indexOut"></div>
@@ -323,25 +323,30 @@ async function showTmAnalysis(forceUpdate=false){
 
     // ⭐ 只算热号15码
     let hot15 = getHotNumbers(history);
+    let zodiacs = getHotZodiacs(history);  // ★ 新增：同时计算生肖
 
     currentAnalysis = {
         nums: hot15,
+        zodiacNums: zodiacs,  // ★ 新增：保存生肖
         top: [],
         kill: [],
         seed: 0,
         weights: {}
     };
 
-    // ⭐ 保存历史
-    saveHot15History(hot15, latest, history);
-    renderTm(currentAnalysis, currentPeriod);
+    // ⭐ 统一保存到两个存储（保持同步）
+    saveHot15History(hot15, latest, history, zodiacs);  // ★ 传入生肖
+    
+    // ⭐ 直接传给renderTm，不再让它重新计算
+    renderTm(currentAnalysis, currentPeriod, {nums: hot15, zodiacNums: zodiacs});
 
     if(forceUpdate){
         showToast("♻️ 已手动刷新分析结果");
     }
 }
 
-function saveHot15History(hot15, latest, history) {
+function saveHot15History(hot15, latest, history, zodiacs=null) {
+    // ★ 统一保存到两个存储（tmHistory + hot15History），保持同步
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     let expect = Number(latest.qishu) + 1;
 
@@ -356,7 +361,10 @@ function saveHot15History(hot15, latest, history) {
         category: item.category || ''
     }));
     
-    let zodiacs = getHotZodiacs(history);
+    // ★ 如果没传入zodiacs，则计算（兼容旧调用）
+    if (!zodiacs) {
+        zodiacs = getHotZodiacs(history);
+    }
     let pureZodiacs = zodiacs.map(item => ({
         zodiac: item.zodiac,
         level: item.level || 'supplement',
@@ -364,38 +372,39 @@ function saveHot15History(hot15, latest, history) {
         category: item.category || ''
     }));
 
-    // 插入当前期（精简格式）
-    list.unshift({
-        expect: expect,
-        date: latest.date,
-        nums: pureNums,
-        zodiacNums: pureZodiacs,
-        top: [],
-        kill: [],
-        open: null,
-        hit: null
-    });
-
-    // 补全最近10期（只有没记录的才补）
-    let exists = new Set(list.map(i => Number(i.expect)));
-    let currentQishu = Number(latest.qishu);
-    for (let i = currentQishu; i > currentQishu - 10; i--) {
-        if (!exists.has(i) && i !== expect) {
-            list.push({
-                expect: i,
-                date: latest.date,
-                nums: [],
-                top: [],
-                kill: [],
-                open: null,
-                hit: null
-            });
+    // 获取当前最新数据期号（用于数据驱动缓存）
+    let basedOnPeriod = 0;
+    try {
+        let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (rawHistory && rawHistory.length > 0) {
+            basedOnPeriod = Math.max(...rawHistory.map(item => {
+                let period = item.qishu || item.expect || item.period || 0;
+                return parseInt(period) || 0;
+            }));
         }
-    }
+    } catch (e) {}
 
-    list.sort((a, b) => b.expect - a.expect);
-    if (list.length > 30) list = list.slice(0, 30);
+    // 插入当前期（精简格式）
+    let newRecord = {
+        expect: expect,
+        nums: pureNums,           // 精简号码数组
+        zodiacNums: pureZodiacs,   // 精简生肖数组
+        open: null,
+        hit: false,
+        date: latest.date,
+        basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本号）
+    };
+    
+    list.unshift(newRecord);
     localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    // ★ 同步到 hot15History（保持两个存储完全一致）
+    let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
+    hot15List = hot15List.filter(i => i.expect != expect);
+    hot15List.unshift({...newRecord});
+    hot15List.sort((a, b) => b.expect - a.expect);
+    if (hot15List.length > 30) hot15List = hot15List.slice(0, 30);
+    localStorage.setItem("hot15History", JSON.stringify(hot15List));
 
     // 自动同步到云端（静默执行，不阻塞）
     saveToCloud(list).catch(e => console.error("云端同步失败:", e));
@@ -876,7 +885,7 @@ function getHotZodiacs(history, count = 4) {
     return result;
 }
 
-function renderTm(result, currentPeriod) {
+function renderTm(result, currentPeriod, precomputedData=null) {
     // ★ 记录当前显示的期号（用于云端加载后重新渲染）
     window.currentDisplayPeriod = currentPeriod;
     
@@ -897,15 +906,20 @@ function renderTm(result, currentPeriod) {
     let hasCacheData = (latestQishu > 0);
     let isCurrentPeriod = hasCacheData && (currentPeriod > latestQishu);
     
-    // ★ 读取历史记录
-    let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
-    let historyRecord = hot15History.find(item => item.expect === currentPeriod);
+    // ★ 统一从tmHistory读取（保持单一数据源，避免两个存储不同步）
+    let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let historyRecord = tmHistory.find(item => item.expect === currentPeriod);
 
     let nums, zodiacResult;
     
-    if (!isCurrentPeriod) {
-        // ★ 历史期或无法确定：只读取保存的数据，绝不重新计算！
-        if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0) {
+    // ★ 新增：检查是否已有保存的推荐（即使开奖了也不重算）
+    let hasSavedRecommendation = historyRecord && historyRecord.nums && historyRecord.nums.length > 0;
+    
+    if (!isCurrentPeriod || hasSavedRecommendation) {
+        // ★ 情况1：历史期（已开奖）
+        // ★ 情况2：当前期但有保存的推荐（防止开奖后重算覆盖）
+        // → 只读取保存的数据，绝不重新计算！
+        if (hasSavedRecommendation) {
             nums = historyRecord.nums;
             zodiacResult = historyRecord.zodiacNums || [];
         } else {
@@ -914,42 +928,41 @@ function renderTm(result, currentPeriod) {
             zodiacResult = [];
         }
     } else {
-        // ★ 确认是当前期（未开奖）：检查数据版本是否变化
-        // 核心逻辑：数据更新 = 推荐变化；数据不变 = 用缓存
-        
-        // 1. 获取当前最新的历史数据期号
-        let currentDataPeriod = 0;
-        try {
-            let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-            if (rawHistory && rawHistory.length > 0) {
-                // ★ 注意：原始数据用 qishu 字段，不是 expect！
-                currentDataPeriod = Math.max(...rawHistory.map(item => {
-                    let period = item.qishu || item.expect || item.period || 0;
-                    return parseInt(period) || 0;
-                }));
-            }
-        } catch (e) {}
-        
-        // 2. 获取缓存是基于哪期数据计算的
-        let cacheBasedOnPeriod = historyRecord?.basedOnPeriod || 0;
-        
-        // 3. 比较：数据版本是否变化（或者数据还没加载完）
-        if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0 
-            && cacheBasedOnPeriod === currentDataPeriod 
-            && currentDataPeriod > 0) {  // 确保数据已加载（期号>0）
-            // ✅ 数据没变（还是同一批50期数据）→ 用缓存，稳定不变
-            nums = historyRecord.nums;
-            zodiacResult = historyRecord.zodiacNums || [];
-        } else {
-            // ❌ 数据已更新（有新开奖）或 数据还没加载 → 重新计算
-            let history = [];
+        // ★ 确认是当前期（未开奖）：优先使用预计算数据
+        if (precomputedData && precomputedData.nums && precomputedData.nums.length > 0) {
+            // ★ 使用showTmAnalysis传入的预计算数据（保证显示和保存一致）✅
+            nums = precomputedData.nums;
+            zodiacResult = precomputedData.zodiacNums || [];
+        } else if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0) {
+            // 有缓存 → 检查数据版本是否变化
+            let currentDataPeriod = 0;
             try {
-                let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-                history = getHistory(raw);
+                let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+                if (rawHistory && rawHistory.length > 0) {
+                    currentDataPeriod = Math.max(...rawHistory.map(item => {
+                        let period = item.qishu || item.expect || item.period || 0;
+                        return parseInt(period) || 0;
+                    }));
+                }
             } catch (e) {}
             
-            nums = getHotNumbers(history);
-            zodiacResult = getHotZodiacs(history);
+            let cacheBasedOnPeriod = historyRecord?.basedOnPeriod || 0;
+            
+            if (cacheBasedOnPeriod === currentDataPeriod && currentDataPeriod > 0) {
+                // ✅ 数据没变 → 用缓存（稳定不变）
+                nums = historyRecord.nums;
+                zodiacResult = historyRecord.zodiacNums || [];
+            } else {
+                // ❌ 数据更新了 → 重算
+                let history = [];
+                try {
+                    let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+                    history = getHistory(raw);
+                } catch (e) {}
+                
+                nums = getHotNumbers(history);
+                zodiacResult = getHotZodiacs(history);
+            }
         }
     }
     let label = `热号15码`;
@@ -1000,25 +1013,29 @@ function renderTm(result, currentPeriod) {
         };
         
         // ★ 查找并更新或插入
-        let existIndex = hot15History.findIndex(item => item.expect === currentPeriod);
+        let existIndex = tmHistory.findIndex(item => item.expect === currentPeriod);
         if (existIndex !== -1) {
             // 已存在 → 更新（保留 open/hit 等开奖结果）
-            newRecord.open = hot15History[existIndex].open;
-            newRecord.hit = hot15History[existIndex].hit;
-            newRecord.hitNums = hot15History[existIndex].hitNums;
-            newRecord.hitTop = hot15History[existIndex].hitTop;
-            newRecord.hitZodiac = hot15History[existIndex].hitZodiac;
-            hot15History[existIndex] = newRecord;
+            newRecord.open = tmHistory[existIndex].open;
+            newRecord.hit = tmHistory[existIndex].hit;
+            newRecord.hitNums = tmHistory[existIndex].hitNums;
+            newRecord.hitTop = tmHistory[existIndex].hitTop;
+            newRecord.hitZodiac = tmHistory[existIndex].hitZodiac;
+            tmHistory[existIndex] = newRecord;
         } else {
             // 不存在 → 插入到开头
-            hot15History.unshift(newRecord);
+            tmHistory.unshift(newRecord);
         }
         
-        hot15History = hot15History.slice(0, 30);
-        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+        tmHistory = tmHistory.slice(0, 30);
+        localStorage.setItem("tmHistory", JSON.stringify(tmHistory));
+        
+        // ★ 同步到 hot15History（保持两个存储同步）
+        let hot15Sync = JSON.parse(JSON.stringify(tmHistory));
+        localStorage.setItem("hot15History", JSON.stringify(hot15Sync));
         
         // ★ 同步到云端
-        saveToCloud(hot15History).catch(e => console.error("云端同步失败:", e));
+        saveToCloud(tmHistory).catch(e => console.error("云端同步失败:", e));
     }
     
     // ★ 分层格式化号码显示（方案B：组首标图标）
@@ -1968,6 +1985,40 @@ async function fixCorruptedPeriods() {
     
     await fixPeriodData(p253);
     await fixPeriodData(p254);
+    
+    // 255期正确数据（开奖44猪，号码命中）
+    let p255 = {
+        expect: 255,
+        date: "2026-09-12",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 3, level: "core", score: 33.46, category: "warm"},
+            {num: 47, level: "supplement", score: 33.11, category: "warm"},
+            {num: 31, level: "supplement", score: 30.5, category: "warm"},
+            {num: 37, level: "supplement", score: 28.8, category: "warm"},
+            {num: 49, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "cold", score: 24.06, category: "cold"},
+            {num: 44, level: "cold", score: 23.23, category: "cold"},
+            {num: 13, level: "cold", score: 21.2, category: "cold"},
+            {num: 25, level: "cold", score: 20, category: "cold"},
+            {num: 33, level: "cold", score: 18.5, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "猴", level: "core", score: 24.94, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "龙", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 7, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 44, hit: true,
+        hitNums: true, hitZodiac: false  // 44命中，但猪不在推荐生肖中
+    };
+    
+    await fixPeriodData(p255);
 }
 
 async function init(){
