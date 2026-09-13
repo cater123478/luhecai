@@ -579,6 +579,59 @@ function checkWarmingUp(item, maxPeriods = 3) {
  *   - displayLevels: Object - 显示层级配置 { core, supplement, cold }（百分比或固定数）
  * @returns {Array} 选择结果（带 level 标记）
  */
+
+/**
+ * 获取最近N期推荐过的cold层号码（用于覆盖机制）
+ * @param {number} periods - 查看最近几期，默认2期
+ * @returns {Array} 最近N期cold层推荐过的号码列表
+ */
+function getRecentlyRecommendedColdNums(periods = 2) {
+    try {
+        let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+        
+        // 获取当前期号
+        let currentPeriod = window.currentDisplayPeriod || 0;
+        if (currentPeriod === 0) {
+            // 尝试从cacheHistory获取最新期号推算
+            let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+            if (raw && raw.length > 0) {
+                let maxQishu = Math.max(...raw.map(item => {
+                    let p = item.qishu || item.expect || item.period || 0;
+                    return parseInt(p) || 0;
+                }));
+                currentPeriod = maxQishu + 1;
+            }
+        }
+        
+        // 取最近N期（排除当前期）
+        let recentRecords = tmHistory
+            .filter(r => r.expect && r.expect < currentPeriod && r.nums && Array.isArray(r.nums))
+            .sort((a, b) => b.expect - a.expect)
+            .slice(0, periods);
+        
+        // 提取这些期中cold层的号码
+        let recommendedColdNums = [];
+        recentRecords.forEach(record => {
+            if (record.nums) {
+                record.nums.forEach(num => {
+                    let numObj = num.num || num;
+                    let level = num.level || '';
+                    
+                    // 只收集cold层的号
+                    if (level === 'cold') {
+                        recommendedColdNums.push(Number(numObj));
+                    }
+                });
+            }
+        });
+        
+        return [...new Set(recommendedColdNums)];  // 去重
+    } catch (e) {
+        console.error('获取近期推荐cold号失败:', e);
+        return [];  // 出错返回空数组，不影响主逻辑
+    }
+}
+
 function unifiedSelect(statsData, config = {}) {
     let {
         count = 15,
@@ -656,14 +709,45 @@ function unifiedSelect(statsData, config = {}) {
             let nonZeroCount = maxCount - zeroCount;
             if (nonZeroCount < 1 && maxCount > 1) { zeroCount = maxCount - 1; nonZeroCount = 1; }
 
-            // ★ 0次号用日期轮换 + 步长分散（避免集中）
+            // ★ 0次号选择：cold层加入"覆盖机制"，其他层保持原逻辑
             let zeroSelected = [];
             if (zeroFreq.length > 0 && zeroCount > 0) {
                 if (zeroFreq.length > zeroCount) {
-                    let start = (rotateFactor - 1) % zeroFreq.length;
-                    let step = Math.floor(zeroFreq.length / zeroCount);  // 步长分散
-                    for (let i = 0; i < zeroCount; i++) {
-                        zeroSelected.push(zeroFreq[(start + i * step) % zeroFreq.length]);
+                    // ★ 判断是否是cold层（需要覆盖机制）
+                    if (category === 'cold') {
+                        // cold层：排除近期已推荐的0频次号，强制覆盖不同号码
+                        let excludeNums = getRecentlyRecommendedColdNums(2);
+                        
+                        // 分成两组：没推荐过的 vs 推荐过的
+                        let available = zeroFreq.filter(c => !excludeNums.includes(c.id));
+                        let excluded = zeroFreq.filter(c => excludeNums.includes(c.id));
+                        
+                        if (available.length >= zeroCount) {
+                            // ✅ 没推荐过的够选 → 全从available中轮换选
+                            let start = (rotateFactor - 1) % available.length;
+                            let step = Math.floor(available.length / zeroCount);
+                            for (let i = 0; i < zeroCount; i++) {
+                                zeroSelected.push(available[(start + i * step) % available.length]);
+                            }
+                        } else {
+                            // ⚠️ 不够 → 先选available，再从excluded补
+                            zeroSelected = [...available];
+                            let needMore = zeroCount - zeroSelected.length;
+                            if (needMore > 0 && excluded.length > 0) {
+                                let start = (rotateFactor - 1) % excluded.length;
+                                let step = Math.floor(excluded.length / needMore);
+                                for (let i = 0; i < needMore; i++) {
+                                    zeroSelected.push(excluded[(start + i * step) % excluded.length]);
+                                }
+                            }
+                        }
+                    } else {
+                        // 非cold层（warm等）：保持原有日期轮换逻辑不变
+                        let start = (rotateFactor - 1) % zeroFreq.length;
+                        let step = Math.floor(zeroFreq.length / zeroCount);  // 步长分散
+                        for (let i = 0; i < zeroCount; i++) {
+                            zeroSelected.push(zeroFreq[(start + i * step) % zeroFreq.length]);
+                        }
                     }
                 } else {
                     zeroSelected = zeroFreq;
