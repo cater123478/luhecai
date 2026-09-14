@@ -372,7 +372,6 @@ async function showTmAnalysis(forceUpdate=false){
         }
         hot15 = getHotNumbers(history);
         zodiacs = getHotZodiacs(history);
-        console.log(`✨ 计算${currentPeriod}期新推荐`);
     }
 
     currentAnalysis = {
@@ -441,13 +440,15 @@ async function saveHot15History(hot15, latest, history, zodiacs=null) {
     } catch (e) {}
 
     // 插入当前期（精简格式）
+    let now = new Date();
+    let localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
     let newRecord = {
         expect: expect,
         nums: pureNums,           // 精简号码数组
         zodiacNums: pureZodiacs,   // 精简生肖数组
         open: null,
         hit: false,
-        date: latest.date,
+        date: localDate,          // ★ 实时保存时间
         basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本号）
     };
 
@@ -1519,7 +1520,6 @@ async function showTmHistory(){
                         list = cloudData;
                         // ★ 更新本地缓存（下次秒开）
                         localStorage.setItem("tmHistory", JSON.stringify(list));
-                        console.log(`✅ 历史投注已从云端更新，共${list.length}期`);
                     }
                 }
             }
