@@ -353,14 +353,17 @@ function saveHot15History(hot15, latest, history, zodiacs=null) {
     // 删除当前期旧记录
     list = list.filter(i => i.expect != expect);
 
-    // ★ 精简保存：只保留必要字段
+    // ★ 精简保存：保留必要字段 + 统计字段（用于详情显示）
     let pureNums = hot15.map(item => ({
         num: item.num || item,
         level: item.level || 'supplement',
         score: Math.round((item.score || 0) * 100) / 100,
-        category: item.category || ''
+        category: item.category || '',
+        freq: item.freq || 0,
+        miss: item.miss || 0,
+        consecutiveMiss: item.consecutiveMiss || 0
     }));
-    
+
     // ★ 如果没传入zodiacs，则计算（兼容旧调用）
     if (!zodiacs) {
         zodiacs = getHotZodiacs(history);
@@ -369,7 +372,10 @@ function saveHot15History(hot15, latest, history, zodiacs=null) {
         zodiac: item.zodiac,
         level: item.level || 'supplement',
         score: Math.round((item.score || 0) * 100) / 100,
-        category: item.category || ''
+        category: item.category || '',
+        freq: item.freq || 0,
+        miss: item.miss || 0,
+        consecutiveMiss: item.consecutiveMiss || 0
     }));
 
     // 获取当前最新数据期号（用于数据驱动缓存）
@@ -394,7 +400,7 @@ function saveHot15History(hot15, latest, history, zodiacs=null) {
         date: latest.date,
         basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本号）
     };
-    
+
     list.unshift(newRecord);
     localStorage.setItem("tmHistory", JSON.stringify(list));
 
@@ -413,7 +419,7 @@ function saveHot15History(hot15, latest, history, zodiacs=null) {
 function updateResult(latest){
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     let qishu = Number(latest.qishu);
-    
+
     // 解析特码（兼容多种格式）
     let nums;
     if (Array.isArray(latest.num)) {
@@ -422,7 +428,7 @@ function updateResult(latest){
         nums = latest.num.replace(/\+/g, '').split(',').map(n => parseInt(n.trim()));
     }
     let openNum = nums ? nums[nums.length - 1] : null;
-    
+
     let found = false;
     list.forEach(item => {
         if(Number(item.expect) === qishu){
@@ -569,7 +575,7 @@ function checkWarmingUp(item, maxPeriods = 3) {
 /**
  * ★★★ 统一选择引擎 ★★★
  * 支持：4级分类 + 过热排除 + 回温优先 + 日期轮换 + 自定义配额
- * 
+ *
  * @param {Array} statsData - calculateStats 返回的统计数据（需先调用 categorizeByFreq + checkWarmingUp）
  * @param {Object} config - 配置选项：
  *   - count: Number - 总选择数量（默认15）
@@ -588,7 +594,7 @@ function checkWarmingUp(item, maxPeriods = 3) {
 function getRecentlyRecommendedColdNums(periods = 2) {
     try {
         let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
-        
+
         // 获取当前期号
         let currentPeriod = window.currentDisplayPeriod || 0;
         if (currentPeriod === 0) {
@@ -602,13 +608,13 @@ function getRecentlyRecommendedColdNums(periods = 2) {
                 currentPeriod = maxQishu + 1;
             }
         }
-        
+
         // 取最近N期（排除当前期）
         let recentRecords = tmHistory
             .filter(r => r.expect && r.expect < currentPeriod && r.nums && Array.isArray(r.nums))
             .sort((a, b) => b.expect - a.expect)
             .slice(0, periods);
-        
+
         // 提取这些期中cold层的号码
         let recommendedColdNums = [];
         recentRecords.forEach(record => {
@@ -616,7 +622,7 @@ function getRecentlyRecommendedColdNums(periods = 2) {
                 record.nums.forEach(num => {
                     let numObj = num.num || num;
                     let level = num.level || '';
-                    
+
                     // 只收集cold层的号
                     if (level === 'cold') {
                         recommendedColdNums.push(Number(numObj));
@@ -624,7 +630,7 @@ function getRecentlyRecommendedColdNums(periods = 2) {
                 });
             }
         });
-        
+
         return [...new Set(recommendedColdNums)];  // 去重
     } catch (e) {
         console.error('获取近期推荐cold号失败:', e);
@@ -717,11 +723,11 @@ function unifiedSelect(statsData, config = {}) {
                     if (category === 'cold') {
                         // cold层：排除近期已推荐的0频次号，强制覆盖不同号码
                         let excludeNums = getRecentlyRecommendedColdNums(2);
-                        
+
                         // 分成两组：没推荐过的 vs 推荐过的
                         let available = zeroFreq.filter(c => !excludeNums.includes(c.id));
                         let excluded = zeroFreq.filter(c => excludeNums.includes(c.id));
-                        
+
                         if (available.length >= zeroCount) {
                             // ✅ 没推荐过的够选 → 全从available中轮换选
                             let start = (rotateFactor - 1) % available.length;
@@ -854,12 +860,12 @@ function unifiedSelect(statsData, config = {}) {
     // 15个号统一按score高→低排序，前5→🔥，中5→⭐，后5→💎
     let CORE_COUNT = displayLevels.core || 5;
     let SUPP_COUNT = (displayLevels.supplement || 10) - CORE_COUNT;
-    
+
     result.sort((a, b) => {
         if (scoreFn) return scoreFn(b) - scoreFn(a);
         return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
     });
-    
+
     result.forEach((item, index) => {
         if (index < CORE_COUNT) item.level = 'core';
         else if (index < CORE_COUNT + SUPP_COUNT) item.level = 'supplement';
@@ -873,7 +879,7 @@ function unifiedSelect(statsData, config = {}) {
 function getHotNumbers(history, count = 15) {
     // 1-49 号码列表
     const ALL_NUMS = Array.from({ length: 49 }, (_, i) => i + 1);
-    
+
     // 获取原始数据（用于期号计算）
     let rawData = null;
     try {
@@ -908,7 +914,7 @@ function getHotNumbers(history, count = 15) {
         let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
         return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
     };
-    
+
     let result = unifiedSelect(stats, {
         count: count,
         quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 原始配额：均衡分配
@@ -924,7 +930,7 @@ function getHotNumbers(history, count = 15) {
 function getHotZodiacs(history, count = 4) {
     // 12生肖列表
     const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
-    
+
     // 获取原始数据（用于期号计算）
     let rawData = null;
     try {
@@ -957,7 +963,7 @@ function getHotZodiacs(history, count = 4) {
         let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
         return item.freq * 4 + Math.sqrt(item.miss) * 2 - recentPenalty;
     };
-    
+
     let result = unifiedSelect(stats, {
         count: count,
         quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
@@ -972,7 +978,7 @@ function getHotZodiacs(history, count = 4) {
 function renderTm(result, currentPeriod, precomputedData=null) {
     // ★ 记录当前显示的期号（用于云端加载后重新渲染）
     window.currentDisplayPeriod = currentPeriod;
-    
+
     let top30 = [...(result.top || [])].sort((a, b) => a - b);
     let kill = [...(result.kill || [])].sort((a, b) => a - b);
 
@@ -984,21 +990,21 @@ function renderTm(result, currentPeriod, precomputedData=null) {
             latestQishu = Number(raw[0].qishu) || 0;
         }
     } catch (e) {}
-    
+
     // ★ 核心判断：只有明确知道是当前期才计算！
     // 保守策略：默认当历史期处理，避免误判导致覆盖云端数据
     let hasCacheData = (latestQishu > 0);
     let isCurrentPeriod = hasCacheData && (currentPeriod > latestQishu);
-    
+
     // ★ 统一从tmHistory读取（保持单一数据源，避免两个存储不同步）
     let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     let historyRecord = tmHistory.find(item => item.expect === currentPeriod);
 
     let nums, zodiacResult;
-    
+
     // ★ 新增：检查是否已有保存的推荐（即使开奖了也不重算）
     let hasSavedRecommendation = historyRecord && historyRecord.nums && historyRecord.nums.length > 0;
-    
+
     if (!isCurrentPeriod || hasSavedRecommendation) {
         // ★ 情况1：历史期（已开奖）
         // ★ 情况2：当前期但有保存的推荐（防止开奖后重算覆盖）
@@ -1029,9 +1035,9 @@ function renderTm(result, currentPeriod, precomputedData=null) {
                     }));
                 }
             } catch (e) {}
-            
+
             let cacheBasedOnPeriod = historyRecord?.basedOnPeriod || 0;
-            
+
             if (cacheBasedOnPeriod === currentDataPeriod && currentDataPeriod > 0) {
                 // ✅ 数据没变 → 用缓存（稳定不变）
                 nums = historyRecord.nums;
@@ -1043,29 +1049,35 @@ function renderTm(result, currentPeriod, precomputedData=null) {
                     let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
                     history = getHistory(raw);
                 } catch (e) {}
-                
+
                 nums = getHotNumbers(history);
                 zodiacResult = getHotZodiacs(history);
             }
         }
     }
     let label = `热号15码`;
-    
+
     // ★ 只有确认是当前期才保存和同步
     if (isCurrentPeriod && nums.length > 0) {
-        // ★ 精简保存：只保留必要字段（num/level/score/category）
+        // ★ 精简保存：保留必要字段 + 统计字段（用于详情显示）
         let pureNums = nums.map(item => ({
             num: item.num || item,
             level: item.level || 'supplement',
             score: Math.round((item.score || 0) * 100) / 100,  // 保留2位小数
-            category: item.category || ''
+            category: item.category || '',
+            freq: item.freq || 0,
+            miss: item.miss || 0,
+            consecutiveMiss: item.consecutiveMiss || 0
         }));
-        
+
         let pureZodiacs = zodiacResult.map(item => ({
             zodiac: item.zodiac,
             level: item.level || 'supplement',
             score: Math.round((item.score || 0) * 100) / 100,
-            category: item.category || ''
+            category: item.category || '',
+            freq: item.freq || 0,
+            miss: item.miss || 0,
+            consecutiveMiss: item.consecutiveMiss || 0
         }));
         
         // 本地时间（无时差）
