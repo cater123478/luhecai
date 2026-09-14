@@ -345,7 +345,7 @@ async function showTmAnalysis(forceUpdate=false){
     }
 }
 
-function saveHot15History(hot15, latest, history, zodiacs=null) {
+async function saveHot15History(hot15, latest, history, zodiacs=null) {
     // ★ 统一保存到两个存储（tmHistory + hot15History），保持同步
     let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     let expect = Number(latest.qishu) + 1;
@@ -412,8 +412,67 @@ function saveHot15History(hot15, latest, history, zodiacs=null) {
     if (hot15List.length > 30) hot15List = hot15List.slice(0, 30);
     localStorage.setItem("hot15History", JSON.stringify(hot15List));
 
-    // 自动同步到云端（静默执行，不阻塞）
-    saveToCloud(list).catch(e => console.error("云端同步失败:", e));
+    // 自动同步到云端（静默执行，不阻塞）- 精简保存，不含统计字段
+    // ★ 防止覆盖已有历史数据：先拉取云端现有数据，合并后再上传
+    let cloudData = list.map(item => ({
+        expect: item.expect,
+        nums: (item.nums || []).map(n => ({
+            num: n.num,
+            level: n.level,
+            score: n.score,
+            category: n.category
+        })),
+        zodiacNums: (item.zodiacNums || []).map(z => ({
+            zodiac: z.zodiac,
+            level: z.level,
+            score: z.score,
+            category: z.category
+        })),
+        open: item.open,
+        hit: item.hit,
+        date: item.date,
+        basedOnPeriod: item.basedOnPeriod,
+        hitNums: item.hitNums,
+        hitTop: item.hitTop,
+        hitZodiac: item.hitZodiac
+    }));
+    
+    // ★ 合并策略：保留云端已有的推荐数据，只新增/更新当前期
+    if (CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    let existingData = Array.isArray(result.record) ? result.record : [];
+                    // 对于已存在的记录，如果云端有nums而本地没有，保留云端的
+                    cloudData = cloudData.map(localItem => {
+                        let existing = existingData.find(e => e.expect === localItem.expect);
+                        if (existing && (!localItem.nums || localItem.nums.length === 0) && existing.nums && existing.nums.length > 0) {
+                            return { ...localItem, nums: existing.nums, zodiacNums: existing.zodiacNums };
+                        }
+                        return localItem;
+                    });
+                    // 补充本地没有的云端历史记录
+                    let localExpects = cloudData.map(i => i.expect);
+                    for (let existing of existingData) {
+                        if (!localExpects.includes(existing.expect)) {
+                            cloudData.push(existing);
+                        }
+                    }
+                    // 按期号排序
+                    cloudData.sort((a, b) => b.expect - a.expect);
+                }
+            }
+        } catch(e) {
+            console.log("云端合并失败:", e.message);
+        }
+    }
+    
+    saveToCloud(cloudData).catch(e => console.error("云端同步失败:", e));
 }
 
 function updateResult(latest){
@@ -667,7 +726,19 @@ function unifiedSelect(statsData, config = {}) {
 
     let result = [];
     let used = new Set();
-    let rotateFactor = new Date().getDate();
+    
+    // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
+    // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
+    let dataVersionPeriod = 0;
+    try {
+        let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (rawHistory && rawHistory.length > 0) {
+            dataVersionPeriod = Math.max(...rawHistory.map(item => {
+                return parseInt(item.qishu || item.expect || item.period || 0) || 0;
+            }));
+        }
+    } catch (e) {}
+    let rotateFactor = dataVersionPeriod > 0 ? dataVersionPeriod : new Date().getDate();
 
     // ★ 辅助函数：在指定类别中选择（回温优先 + 日期轮换）
     function selectFromCategory(category, maxCount, preferWarming = false) {
@@ -1380,7 +1451,30 @@ function parseDataArray(arr) {
 }
 
 async function showTmHistory(){
-    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    // ★ 直接从云端读取历史数据（确保多端同步，不依赖本地缓存）
+    let list = [];
+    
+    if (CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    list = Array.isArray(result.record) ? result.record : [];
+                }
+            }
+        } catch(e) {
+            console.log("云端读取失败，回退到本地:", e.message);
+        }
+    }
+    
+    // 云端失败时回退到本地
+    if (!list || list.length === 0) {
+        list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    }
     
     // 获取当前最新开奖期号，只显示历史期次（已开奖的）
     let latestQishu = 0;
@@ -2115,6 +2209,41 @@ async function fixCorruptedPeriods() {
     };
     
     await fixPeriodData(p255);
+    
+    // ★ 256期恢复数据（开奖1马，号码+生肖双命中）
+    let p256 = {
+        expect: 256,
+        date: "2026-09-13",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 47, level: "core", score: 33.11, category: "warm"},
+            {num: 31, level: "supplement", score: 30.5, category: "warm"},
+            {num: 16, level: "supplement", score: 29.5, category: "warm"},
+            {num: 49, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "supplement", score: 24.06, category: "warm"},
+            {num: 48, level: "cold", score: 32.57, category: "cold"},
+            {num: 15, level: "cold", score: 30.0, category: "cold"},
+            {num: 28, level: "cold", score: 27.29, category: "cold"},
+            {num: 34, level: "cold", score: 26.14, category: "cold"},
+            {num: 41, level: "cold", score: 24.06, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "马", level: "core", score: 24.94, category: "hot"},
+            {zodiac: "鼠", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 8.0, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 1, hit: true,
+        hitNums: true, hitZodiac: true,
+        basedOnPeriod: 255
+    };
+    
+    await fixPeriodData(p256);
 }
 
 async function init(){
@@ -2153,9 +2282,13 @@ async function init(){
     let data = [];
     let useCache = false;
     
-    // 自动从云端加载历史推荐（如果配置了API Key）- 改为非阻塞
+    // ★ 先从云端加载历史推荐（必须等完成后再继续，否则历史投注结果会显示空）
     if (CLOUD_API_KEY) {
-        loadFromCloud().catch(e => console.log("云端加载失败:", e));
+        try {
+            await loadFromCloud();
+        } catch(e) {
+            console.log("云端加载失败:", e);
+        }
     }
 
     try{
