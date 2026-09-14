@@ -306,7 +306,7 @@ async function showTmAnalysis(forceUpdate=false){
         return;
     }
     let box = document.getElementById("tmOut");
-    box.innerHTML = "⏳ 正在计算分析...";
+    box.innerHTML = "⏳ 正在获取推荐...";
     await new Promise(r => setTimeout(r, 300));
 
     let raw = await fetchData();
@@ -321,20 +321,63 @@ async function showTmAnalysis(forceUpdate=false){
 
     updateResult(latest);
 
-    // ⭐ 只算热号15码
-    let hot15 = getHotNumbers(history);
-    let zodiacs = getHotZodiacs(history);  // ★ 新增：同时计算生肖
+    // ★ 先从云端查找当前期是否已有推荐（实现多端一致）
+    let cloudRecommendation = null;
+    if (!forceUpdate && CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    let cloudData = Array.isArray(result.record) ? result.record : [];
+                    cloudRecommendation = cloudData.find(r => r.expect === currentPeriod && r.nums && r.nums.length > 0);
+                }
+            }
+        } catch(e) {
+            console.log("云端查询推荐失败:", e.message);
+        }
+    }
+
+    let hot15, zodiacs;
+    
+    if (cloudRecommendation && !forceUpdate) {
+        // ★ 云端已有当前期推荐 → 直接使用（多端一致）
+        hot15 = cloudRecommendation.nums.map(n => ({
+            num: n.num,
+            level: n.level || 'supplement',
+            score: n.score || 0,
+            category: n.category || '',
+            freq: n.freq || 0,
+            miss: n.miss || 0,
+            consecutiveMiss: n.consecutiveMiss || 0
+        }));
+        zodiacs = (cloudRecommendation.zodiacNums || []).map(z => ({
+            zodiac: z.zodiac,
+            level: z.level || 'supplement',
+            score: z.score || 0,
+            category: z.category || ''
+        }));
+        console.log(`✅ 使用云端${currentPeriod}期推荐`);
+    } else {
+        // ★ 云端没有或强制刷新 → 计算
+        hot15 = getHotNumbers(history);
+        zodiacs = getHotZodiacs(history);
+        console.log(`✨ 计算${currentPeriod}期新推荐`);
+    }
 
     currentAnalysis = {
         nums: hot15,
-        zodiacNums: zodiacs,  // ★ 新增：保存生肖
+        zodiacNums: zodiacs,
         top: [],
         kill: [],
         seed: 0,
         weights: {}
     };
 
-    // ⭐ 统一保存到两个存储（保持同步）
+    // ⭐ 统一保存到两个存储（保持同步）+ 云端同步
     saveHot15History(hot15, latest, history, zodiacs);  // ★ 传入生肖
     
     // ⭐ 直接传给renderTm，不再让它重新计算
