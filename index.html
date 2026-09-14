@@ -344,7 +344,8 @@ async function showTmAnalysis(forceUpdate=false){
     let hot15, zodiacs;
     
     if (cloudRecommendation && !forceUpdate) {
-        // ★ 云端已有当前期推荐 → 直接使用（多端一致）
+        // ★ 云端有当前期推荐 → 直接使用（多端一致）
+        // 注意：不再检查统计字段完整性，避免误删有效推荐
         hot15 = cloudRecommendation.nums.map(n => ({
             num: n.num,
             level: n.level || 'supplement',
@@ -423,6 +424,7 @@ async function saveHot15History(hot15, latest, history, zodiacs=null) {
         score: Math.round((item.score || 0) * 100) / 100,
         category: item.category || '',
         freq: item.freq || 0,
+        freqRate: item.freqRate || 0,
         miss: item.miss || 0,
         consecutiveMiss: item.consecutiveMiss || 0
     }));
@@ -1179,82 +1181,8 @@ function renderTm(result, currentPeriod, precomputedData=null) {
     }
     let label = `热号15码`;
 
-    // ★ 只有确认是当前期才保存和同步
-    if (isCurrentPeriod && nums.length > 0) {
-        // ★ 精简保存：保留必要字段 + 统计字段（用于详情显示）
-        let pureNums = nums.map(item => ({
-            num: item.num || item,
-            level: item.level || 'supplement',
-            score: Math.round((item.score || 0) * 100) / 100,  // 保留2位小数
-            category: item.category || '',
-            freq: item.freq || 0,
-            miss: item.miss || 0,
-            consecutiveMiss: item.consecutiveMiss || 0
-        }));
-
-        let pureZodiacs = zodiacResult.map(item => ({
-            zodiac: item.zodiac,
-            level: item.level || 'supplement',
-            score: Math.round((item.score || 0) * 100) / 100,
-            category: item.category || '',
-            freq: item.freq || 0,
-            miss: item.miss || 0,
-            consecutiveMiss: item.consecutiveMiss || 0
-        }));
-        
-        // 本地时间（无时差）
-        let now = new Date();
-        let pad = n => String(n).padStart(2, '0');
-        let localDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-        
-        // 获取当前最新数据期号（用于后续判断是否需要重算）
-        let basedOnPeriod = 0;
-        try {
-            let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-            if (rawHistory && rawHistory.length > 0) {
-                // ★ 注意：原始数据用 qishu 字段，不是 expect！
-                basedOnPeriod = Math.max(...rawHistory.map(item => {
-                    let period = item.qishu || item.expect || item.period || 0;
-                    return parseInt(period) || 0;
-                }));
-            }
-        } catch (e) {}
-        
-        let newRecord = {
-            expect: currentPeriod,
-            nums: pureNums,           // 精简号码数组
-            zodiacNums: pureZodiacs,   // 精简生肖数组
-            open: null,
-            hit: false,
-            date: localDate,
-            basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本）
-        };
-        
-        // ★ 查找并更新或插入
-        let existIndex = tmHistory.findIndex(item => item.expect === currentPeriod);
-        if (existIndex !== -1) {
-            // 已存在 → 更新（保留 open/hit 等开奖结果）
-            newRecord.open = tmHistory[existIndex].open;
-            newRecord.hit = tmHistory[existIndex].hit;
-            newRecord.hitNums = tmHistory[existIndex].hitNums;
-            newRecord.hitTop = tmHistory[existIndex].hitTop;
-            newRecord.hitZodiac = tmHistory[existIndex].hitZodiac;
-            tmHistory[existIndex] = newRecord;
-        } else {
-            // 不存在 → 插入到开头
-            tmHistory.unshift(newRecord);
-        }
-        
-        tmHistory = tmHistory.slice(0, 30);
-        localStorage.setItem("tmHistory", JSON.stringify(tmHistory));
-        
-        // ★ 同步到 hot15History（保持两个存储同步）
-        let hot15Sync = JSON.parse(JSON.stringify(tmHistory));
-        localStorage.setItem("hot15History", JSON.stringify(hot15Sync));
-        
-        // ★ 同步到云端
-        saveToCloud(tmHistory).catch(e => console.error("云端同步失败:", e));
-    }
+    // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理
+    // renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
     
     // ★ 分层格式化号码显示（方案B：组首标图标）
     let shownLevels = new Set();  // 记录已显示图标的层级
@@ -1299,9 +1227,9 @@ function renderTm(result, currentPeriod, precomputedData=null) {
         
         let title = `生肖${zodiac}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
         let zFreq = item.freq ?? 0;
+        let zFreqRate = item.freqRate ?? 0;
         let zMiss = item.miss ?? 0;
-        let zConsec = item.consecutiveMiss ?? 0;
-        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zMiss}, ${zConsec}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zFreqRate}, ${zMiss}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
     
     document.getElementById("tmOut").innerHTML = `
@@ -1358,7 +1286,7 @@ function showZodiacDetail(el, zodiac, freq, freqRate, miss, score) {
         <div style="font-size:24px;font-weight:bold;color:#3498db;margin-bottom:10px;">🐭 ${zodiac}</div>
         <div style="color:#333;line-height:1.8;">
             频率：<b>${freq}</b> 次<br>
-            出现率：<b>${freqRate.toFixed(1)}</b>%<br>
+            出现率：<b>${(freqRate * 100).toFixed(1)}</b>%<br>
             遗漏：<b>${miss}</b> 期<br>
             综合评分：<b>${score.toFixed(1)}</b> 分
         </div>
@@ -2296,6 +2224,41 @@ async function fixCorruptedPeriods() {
     };
     
     await fixPeriodData(p256);
+    
+    // ★ 257期恢复数据（开奖7鼠，号码未中，生肖命中）
+    let p257 = {
+        expect: 257,
+        date: "2026-09-14",
+        nums: [
+            {num: 17, level: "core", score: 42.52, category: "warm"},
+            {num: 26, level: "core", score: 40.75, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 16, level: "core", score: 34.1, category: "warm"},
+            {num: 31, level: "core", score: 33.11, category: "warm"},
+            {num: 19, level: "supplement", score: 30.5, category: "warm"},
+            {num: 8, level: "supplement", score: 29.5, category: "warm"},
+            {num: 37, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "supplement", score: 24.06, category: "warm"},
+            {num: 48, level: "cold", score: 32.57, category: "cold"},
+            {num: 29, level: "cold", score: 30.0, category: "cold"},
+            {num: 36, level: "cold", score: 27.29, category: "cold"},
+            {num: 45, level: "cold", score: 26.14, category: "cold"},
+            {num: 47, level: "cold", score: 24.06, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "蛇", level: "core", score: 26.0, category: "hot"},
+            {zodiac: "鼠", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "龙", level: "cold", score: 12.0, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 7, hit: false,
+        hitNums: false, hitZodiac: true,
+        basedOnPeriod: 256
+    };
+    
+    await fixPeriodData(p257);
 }
 
 async function init(){
