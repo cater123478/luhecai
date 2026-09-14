@@ -362,7 +362,14 @@ async function showTmAnalysis(forceUpdate=false){
         }));
         console.log(`✅ 使用云端${currentPeriod}期推荐`);
     } else {
-        // ★ 云端没有或强制刷新 → 计算
+        // ★ 云端没有或强制刷新 → 先同步云端历史（确保cold覆盖机制多端一致）
+        if (CLOUD_API_KEY) {
+            try {
+                await loadFromCloud();
+            } catch(e) {
+                console.log("云端历史同步失败:", e.message);
+            }
+        }
         hot15 = getHotNumbers(history);
         zodiacs = getHotZodiacs(history);
         console.log(`✨ 计算${currentPeriod}期新推荐`);
@@ -1494,9 +1501,10 @@ function parseDataArray(arr) {
 }
 
 async function showTmHistory(){
-    // ★ 直接从云端读取历史数据（确保多端同步，不依赖本地缓存）
-    let list = [];
+    // ★ 缓存策略：本地缓存加速 + 云端保证多端一致
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     
+    // ★ 有云端配置时，拉取最新数据覆盖本地（确保多端一致）
     if (CLOUD_API_KEY) {
         try {
             const binId = getCloudBinId();
@@ -1506,17 +1514,18 @@ async function showTmHistory(){
                 });
                 if (res.ok) {
                     const result = await res.json();
-                    list = Array.isArray(result.record) ? result.record : [];
+                    let cloudData = Array.isArray(result.record) ? result.record : [];
+                    if (cloudData.length > 0) {
+                        list = cloudData;
+                        // ★ 更新本地缓存（下次秒开）
+                        localStorage.setItem("tmHistory", JSON.stringify(list));
+                        console.log(`✅ 历史投注已从云端更新，共${list.length}期`);
+                    }
                 }
             }
         } catch(e) {
-            console.log("云端读取失败，回退到本地:", e.message);
+            console.log("云端读取失败，使用本地缓存:", e.message);
         }
-    }
-    
-    // 云端失败时回退到本地
-    if (!list || list.length === 0) {
-        list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
     }
     
     // 获取当前最新开奖期号，只显示历史期次（已开奖的）
