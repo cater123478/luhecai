@@ -1794,7 +1794,7 @@ async function init(){
         await showTmAnalysis();
         
         // ★ 根据实际数据来源显示提示
-        showToast(fromCache ? `✅ 缓存数据已加载` : `✅ 云端数据已更新`);
+        showToast(fromCache ? `✅ 数据已加载` : `✅ 数据已更新`);
     } catch(e) {
         if (e.message !== "CLOUD_ERROR") {
             showToast(`❌ 加载失败`);
