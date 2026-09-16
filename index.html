@@ -128,7 +128,7 @@ h2{text-align:center;}
 // ★ 云端数据缓存（sessionStorage：刷新保留，关闭标签页清除）
 const CLOUD_CACHE_KEY = 'luhecai_cloud_cache';
 const CLOUD_CACHE_TIME_KEY = 'luhecai_cloud_cache_time';
-const CLOUD_CACHE_TTL = 60000; // 10秒缓存
+const CLOUD_CACHE_TTL = 3000; // 10秒缓存
 
 async function getCloudData(forceRefresh = false) {
     const now = Date.now();
@@ -781,9 +781,7 @@ async function unifiedSelect(statsData, config = {}) {
         count = 15,
         quotas = {},
         scoreFn = null,
-        preferWarmingFor = ['warm', 'cold'],
-        displayLevels = {},
-        pureRankCategories = []  // ★ 使用纯分数排名的分类（不日期轮换）
+        displayLevels = {}
     } = config;
 
     // ★ 默认配额（根据总数智能分配）
@@ -806,6 +804,11 @@ async function unifiedSelect(statsData, config = {}) {
     let result = [];
     let used = new Set();
     
+    // ★★★ 统一冷却期机制：刚开过1-2期的号（miss ≤ 2）统一标记
+    const COOLING_MISS_THRESHOLD = 2;
+    let coolingIds = new Set(statsData.filter(item => item.miss <= COOLING_MISS_THRESHOLD).map(item => item.id));
+    console.log(`[冷却期] 排除号: ${Array.from(coolingIds).join(', ') || '无'}`);
+    
     // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
     // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
     let dataVersionPeriod = 0;
@@ -819,161 +822,70 @@ async function unifiedSelect(statsData, config = {}) {
     } catch (e) {}
     let rotateFactor = dataVersionPeriod > 0 ? dataVersionPeriod : new Date().getDate();
 
-    // ★ 辅助函数：在指定类别中选择（回温优先 + 日期轮换）
-    async function selectFromCategory(category, maxCount, preferWarming = false) {
+    // ★ 辅助函数：统一选择逻辑（科学评分 + 冷却期 + 扩大候选池轮换）
+    async function selectFromCategory(category, maxCount) {
         let candidates = statsData.filter(item =>
             item.category === category && !used.has(item.id)
         );
 
         if (candidates.length === 0) return [];
 
-        // 排序
-        candidates.sort((a, b) => {
-            // 回温优先
-            if (preferWarming) {
-                if (a.isWarmingUp && !b.isWarmingUp) return -1;
-                if (!a.isWarmingUp && b.isWarmingUp) return 1;
-                if (a.periodsSinceLast !== b.periodsSinceLast) {
-                    return a.periodsSinceLast - b.periodsSinceLast;
-                }
-            }
+        // ★★★ 统一冷却期：先选非冷却的，不够才补
+        let nonCooling = candidates.filter(c => !coolingIds.has(c.id));
+        let cooling = candidates.filter(c => coolingIds.has(c.id));
+        
+        // 冷却期内按miss排序（大的优先）
+        cooling.sort((a, b) => b.miss - a.miss);
+        
+        if (nonCooling.length >= maxCount) {
+            candidates = nonCooling;
+        } else {
+            candidates = [...nonCooling, ...cooling];
+        }
 
-            // 评分排序
-            if (scoreFn) {
-                return scoreFn(b) - scoreFn(a);
-            }
-            // 默认评分：频率权重 + 遗漏权重
-            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
-            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
-            return scoreB - scoreA;
+        // ★★★ 统一排序：科学评分 + 冷却惩罚
+        candidates.sort((a, b) => {
+            let scoreA = scoreFn ? scoreFn(a) : (a.freq * 4 + Math.sqrt(a.miss) * 2);
+            let scoreB = scoreFn ? scoreFn(b) : (b.freq * 4 + Math.sqrt(b.miss) * 2);
+            
+            if (coolingIds.has(a.id)) scoreA -= 20;
+            if (coolingIds.has(b.id)) scoreB -= 20;
+            
+            return scoreB - scoreA;  // 分数高的排前
         });
 
-        // ★ 纯分数排名模式（不使用日期轮换，按分数+频率均衡选取）
-        if (pureRankCategories.includes(category)) {
-            // ★ 按频率分组：0次 vs 1次及以上
-            let zeroFreq = candidates.filter(c => c.freq === 0);
-            let nonZeroFreq = candidates.filter(c => c.freq > 0);
+        // ★★★ 扩大候选池 + 轮换选择（覆盖更多号码/生肖）
+        // 候选池大小：取 min(全部候选, maxCount × 3)，但至少取 maxCount 个
+        let poolSize = Math.min(candidates.length, Math.max(maxCount * 3, maxCount));
+        let pool = candidates.slice(0, poolSize);
+        
+        // 用 rotateFactor 滑动窗口选择，每期选不同的组合
+        if (pool.length > maxCount) {
+            let maxStart = pool.length - maxCount;
+            let start = rotateFactor % (maxStart + 1);
+            return pool.slice(start, start + maxCount);
+        }
 
-            // 各组分别排序
-            zeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.miss - a.miss));
-            nonZeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.freq * 4 + Math.sqrt(b.miss) * 2 - a.freq * 4 - Math.sqrt(a.miss) * 2));
-
-            // ★ 动态均衡分配：按实际数量比例分配（至少各1个）
-            let totalCount = zeroFreq.length + nonZeroFreq.length;
-            let zeroRatio = zeroFreq.length / totalCount;
-            let zeroCount = Math.max(Math.round(maxCount * zeroRatio), 1);
-            let nonZeroCount = maxCount - zeroCount;
-            if (nonZeroCount < 1 && maxCount > 1) { zeroCount = maxCount - 1; nonZeroCount = 1; }
-
-            // ★ 0次号选择：cold层加入"覆盖机制"，其他层保持原逻辑
-            let zeroSelected = [];
-            if (zeroFreq.length > 0 && zeroCount > 0) {
-                if (zeroFreq.length > zeroCount) {
-                    // ★ 判断是否是cold层（需要覆盖机制）
-                    if (category === 'cold') {
-                        // cold层：排除近期已推荐的0频次号，强制覆盖不同号码
-                        let excludeNums = await getRecentlyRecommendedColdNums(2);
-
-                        // 分成两组：没推荐过的 vs 推荐过的
-                        let available = zeroFreq.filter(c => !excludeNums.includes(c.id));
-                        let excluded = zeroFreq.filter(c => excludeNums.includes(c.id));
-
-                        if (available.length >= zeroCount) {
-                            // ✅ 没推荐过的够选 → 全从available中轮换选
-                            let start = (rotateFactor - 1) % available.length;
-                            let step = Math.floor(available.length / zeroCount);
-                            for (let i = 0; i < zeroCount; i++) {
-                                zeroSelected.push(available[(start + i * step) % available.length]);
-                            }
-                        } else {
-                            // ⚠️ 不够 → 先选available，再从excluded补
-                            zeroSelected = [...available];
-                            let needMore = zeroCount - zeroSelected.length;
-                            if (needMore > 0 && excluded.length > 0) {
-                                let start = (rotateFactor - 1) % excluded.length;
-                                let step = Math.floor(excluded.length / needMore);
-                                for (let i = 0; i < needMore; i++) {
-                                    zeroSelected.push(excluded[(start + i * step) % excluded.length]);
-                                }
-                            }
-                        }
-                    } else {
-                        // 非cold层（warm等）：保持原有日期轮换逻辑不变
-                        let start = (rotateFactor - 1) % zeroFreq.length;
-                        let step = Math.floor(zeroFreq.length / zeroCount);  // 步长分散
-                        for (let i = 0; i < zeroCount; i++) {
-                            zeroSelected.push(zeroFreq[(start + i * step) % zeroFreq.length]);
-                        }
+        // ★ cold层0频次号覆盖机制（保持不变）
+        if (category === 'cold') {
+            let zeroFreq = pool.filter(c => c.freq === 0);
+            if (zeroFreq.length > 1) {
+                let excludeNums = await getRecentlyRecommendedColdNums(2);
+                let available = zeroFreq.filter(c => !excludeNums.includes(String(c.id)));
+                
+                if (available.length > 0) {
+                    let selectedZero = available[rotateFactor % available.length];
+                    let idx = pool.findIndex(c => c === selectedZero || c.id === selectedZero.id);
+                    if (idx >= 0) {
+                        // 把选中的0频次号移到最前面
+                        pool.splice(idx, 1);
+                        pool.unshift(selectedZero);
                     }
-                } else {
-                    zeroSelected = zeroFreq;
                 }
             }
-
-            // 非零次号用日期轮换
-            let nonZeroSelected = [];
-            if (nonZeroFreq.length > 0 && nonZeroCount > 0) {
-                if (nonZeroFreq.length > nonZeroCount) {
-                    let start = rotateFactor % nonZeroFreq.length;
-                    for (let i = 0; i < nonZeroCount; i++) {
-                        nonZeroSelected.push(nonZeroFreq[(start + i) % nonZeroFreq.length]);
-                    }
-                } else {
-                    nonZeroSelected = nonZeroFreq;
-                }
-            }
-
-            let selected = [...zeroSelected, ...nonZeroSelected];
-
-            return selected;
         }
 
-        // ★ 回温优先选择 + 日期轮换
-        if (preferWarming) {
-            let warmingCandidates = candidates.filter(c => c.isWarmingUp);
-            let normalCandidates = candidates.filter(c => !c.isWarmingUp);
-
-            let selected = [];
-
-            // 1. 先选回温的（日期轮换）
-            if (warmingCandidates.length > 0 && selected.length < maxCount) {
-                let warmCount = Math.min(warmingCandidates.length, maxCount);
-                let warmStartIndex = (rotateFactor - 1) % warmingCandidates.length;
-
-                for (let i = 0; i < warmCount && selected.length < maxCount; i++) {
-                    let idx = (warmStartIndex + i) % warmingCandidates.length;
-                    selected.push(warmingCandidates[idx]);
-                }
-            }
-
-            // 2. 再从非回温中选（日期轮换，不同偏移）
-            if (normalCandidates.length > 0 && selected.length < maxCount) {
-                let remaining = maxCount - selected.length;
-                let normalStartIndex = (rotateFactor) % normalCandidates.length;
-
-                for (let i = 0; i < remaining && selected.length < maxCount; i++) {
-                    let idx = (normalStartIndex + i) % normalCandidates.length;
-                    selected.push(normalCandidates[idx]);
-                }
-            }
-
-            return selected;
-        }
-
-        // 不需要回温优先 → 直接日期轮换
-        if (candidates.length > maxCount) {
-            let startIndex = (rotateFactor - 1) % candidates.length;
-            let selected = [];
-
-            for (let i = 0; i < maxCount; i++) {
-                let idx = (startIndex + i) % candidates.length;
-                selected.push(candidates[idx]);
-            }
-
-            return selected;
-        }
-
-        return candidates.slice(0, maxCount);
+        return pool.slice(0, maxCount);
     }
 
     // ★ 按类别顺序选择：hot → warm → cold → overheat（补充用）
@@ -981,7 +893,7 @@ async function unifiedSelect(statsData, config = {}) {
 
     for (let cat of categoryOrder) {
         if (finalQuotas[cat] > 0) {
-            let picks = await selectFromCategory(cat, finalQuotas[cat], preferWarmingFor.includes(cat));
+            let picks = await selectFromCategory(cat, finalQuotas[cat]);
             picks.forEach(p => {
                 result.push(p);
                 used.add(p.id);
@@ -1067,10 +979,8 @@ async function getHotNumbers(history, count = 15) {
 
     let result = await unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 原始配额：均衡分配
+        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 均衡分配
         scoreFn: numScoreFn,
-        preferWarmingFor: ['warm', 'cold'],
-        pureRankCategories: ['cold', 'warm'],  // ★ cold和warm都：纯分数排名
         displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
     });
 
@@ -1116,10 +1026,9 @@ async function getHotZodiacs(history, count = 4) {
 
     let result = await unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
-        scoreFn: zodiacScoreFn,  // 使用带近期惩罚的评分
-        preferWarmingFor: ['warm', 'cold'],
-        displayLevels: { core: 1, supplement: 3 }  // 生肖：🔥1个 ⭐2个 💎1个
+        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖配额
+        scoreFn: zodiacScoreFn,
+        displayLevels: { core: 1, supplement: 3 }  // 🔥1个 ⭐2个 💎1个
     });
 
     return result;
