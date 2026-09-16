@@ -130,6 +130,10 @@ const CLOUD_CACHE_KEY = 'luhecai_cloud_cache';
 const CLOUD_CACHE_TIME_KEY = 'luhecai_cloud_cache_time';
 const CLOUD_CACHE_TTL = 3000; // 10秒缓存
 
+// ★ 评分公式权重参数（统一管理，方便调整）
+const SCORE_FREQ_WEIGHT = 5;      // 频次权重
+const SCORE_MISS_WEIGHT = 1.5;    // 遗漏权重
+
 async function getCloudData(forceRefresh = false) {
     const now = Date.now();
     
@@ -807,7 +811,6 @@ async function unifiedSelect(statsData, config = {}) {
     // ★★★ 统一冷却期机制：刚开过1-2期的号（miss ≤ 2）统一标记
     const COOLING_MISS_THRESHOLD = 2;
     let coolingIds = new Set(statsData.filter(item => item.miss <= COOLING_MISS_THRESHOLD).map(item => item.id));
-    console.log(`[冷却期] 排除号: ${Array.from(coolingIds).join(', ') || '无'}`);
     
     // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
     // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
@@ -830,23 +833,15 @@ async function unifiedSelect(statsData, config = {}) {
 
         if (candidates.length === 0) return [];
 
-        // ★★★ 统一冷却期：先选非冷却的，不够才补
+        // ★★★ 统一冷却期：只保留非冷却的号（不补冷却的）
         let nonCooling = candidates.filter(c => !coolingIds.has(c.id));
-        let cooling = candidates.filter(c => coolingIds.has(c.id));
         
-        // 冷却期内按miss排序（大的优先）
-        cooling.sort((a, b) => b.miss - a.miss);
-        
-        if (nonCooling.length >= maxCount) {
-            candidates = nonCooling;
-        } else {
-            candidates = [...nonCooling, ...cooling];
-        }
+        candidates = nonCooling;  // 只用非冷却的，宁缺毋滥
 
         // ★★★ 统一排序：科学评分 + 冷却惩罚
         candidates.sort((a, b) => {
-            let scoreA = scoreFn ? scoreFn(a) : (a.freq * 4 + Math.sqrt(a.miss) * 2);
-            let scoreB = scoreFn ? scoreFn(b) : (b.freq * 4 + Math.sqrt(b.miss) * 2);
+            let scoreA = scoreFn ? scoreFn(a) : (a.freq * SCORE_FREQ_WEIGHT + Math.sqrt(a.miss) * SCORE_MISS_WEIGHT);
+            let scoreB = scoreFn ? scoreFn(b) : (b.freq * SCORE_FREQ_WEIGHT + Math.sqrt(b.miss) * SCORE_MISS_WEIGHT);
             
             if (coolingIds.has(a.id)) scoreA -= 20;
             if (coolingIds.has(b.id)) scoreB -= 20;
@@ -866,21 +861,24 @@ async function unifiedSelect(statsData, config = {}) {
             return pool.slice(start, start + maxCount);
         }
 
-        // ★ cold层0频次号覆盖机制（保持不变）
+        // ★ cold层0频次号覆盖机制（选2个轮换覆盖）
         if (category === 'cold') {
             let zeroFreq = pool.filter(c => c.freq === 0);
             if (zeroFreq.length > 1) {
                 let excludeNums = await getRecentlyRecommendedColdNums(2);
                 let available = zeroFreq.filter(c => !excludeNums.includes(String(c.id)));
                 
-                if (available.length > 0) {
-                    let selectedZero = available[rotateFactor % available.length];
-                    let idx = pool.findIndex(c => c === selectedZero || c.id === selectedZero.id);
-                    if (idx >= 0) {
-                        // 把选中的0频次号移到最前面
-                        pool.splice(idx, 1);
+                // 选2个0频次号移到最前面
+                for (let i = 0; i < 2 && available.length > 0; i++) {
+                    let idx = rotateFactor % available.length;
+                    let selectedZero = available[idx];
+                    let pos = pool.findIndex(c => c === selectedZero || c.id === selectedZero.id);
+                    if (pos >= 0) {
+                        pool.splice(pos, 1);
                         pool.unshift(selectedZero);
                     }
+                    // 已选的从available中移除，避免重复
+                    available.splice(idx, 1);
                 }
             }
         }
@@ -901,13 +899,13 @@ async function unifiedSelect(statsData, config = {}) {
         }
     }
 
-    // ★ 如果还不够，从剩余候选中补满（纯分数排序，不按类别优先）
+    // ★ 如果还不够，从剩余候选中补满（排除冷却期的号）
     if (result.length < count) {
-        let remaining = statsData.filter(item => !used.has(item.id));
+        let remaining = statsData.filter(item => !used.has(item.id) && !coolingIds.has(item.id));
         remaining.sort((a, b) => {
             if (scoreFn) return scoreFn(b) - scoreFn(a);
-            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
-            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
+            let scoreA = a.freq * SCORE_FREQ_WEIGHT + Math.sqrt(a.miss) * SCORE_MISS_WEIGHT;
+            let scoreB = b.freq * SCORE_FREQ_WEIGHT + Math.sqrt(b.miss) * SCORE_MISS_WEIGHT;
             return scoreB - scoreA;
         });
 
@@ -925,7 +923,7 @@ async function unifiedSelect(statsData, config = {}) {
 
     result.sort((a, b) => {
         if (scoreFn) return scoreFn(b) - scoreFn(a);
-        return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
+        return (b.freq * SCORE_FREQ_WEIGHT + Math.sqrt(b.miss) * SCORE_MISS_WEIGHT) - (a.freq * SCORE_FREQ_WEIGHT + Math.sqrt(a.miss) * SCORE_MISS_WEIGHT);
     });
 
     result.forEach((item, index) => {
@@ -957,7 +955,7 @@ async function getHotNumbers(history, count = 15) {
     );
 
     // ★ 步骤2：分类 + 回温检测
-    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.02 };  // 号码阈值：≥8次过热, ≥5次热, ≥1次温(扩大warm池)
+    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.06 };  // 号码阈值：≥8次过热, ≥5次热, ≥3次温
     stats.forEach(item => {
         item.category = categorizeByFreq(item, thresholds);
         item.isWarmingUp = checkWarmingUp(item, 3);
@@ -1014,14 +1012,14 @@ async function getHotZodiacs(history, count = 4) {
         item.zodiac = item.id;
         // ★ 计算评分（用于显示）：频率权重高，遗漏次要，近期惩罚
         let zodiacRecentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
-        item.score = item.freq * 4 + Math.sqrt(item.miss) * 2 - zodiacRecentPenalty;
+        item.score = item.freq * SCORE_FREQ_WEIGHT + Math.sqrt(item.miss) * SCORE_MISS_WEIGHT - zodiacRecentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
     // 生肖专用评分：频率×4 + √遗漏×2 - 近期惩罚(×5)
     let zodiacScoreFn = (item) => {
         let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
-        return item.freq * 4 + Math.sqrt(item.miss) * 2 - recentPenalty;
+        return item.freq * SCORE_FREQ_WEIGHT + Math.sqrt(item.miss) * SCORE_MISS_WEIGHT - recentPenalty;
     };
 
     let result = await unifiedSelect(stats, {
