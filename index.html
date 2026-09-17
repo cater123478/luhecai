@@ -938,7 +938,7 @@ async function getHotNumbers(history, count = 15) {
     );
 
     // ★ 步骤2：分类 + 回温检测
-    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.06 };  // 号码阈值：≥8次过热, ≥5次热, ≥3次温
+    let thresholds = { overheat: 0.08, hot: 0.06, warm: 0.03 };  // 号码阈值：overheat:≥4次;hot:≥3次;warm:≥2次;cold:≤1次
     stats.forEach(item => {
         item.category = categorizeByFreq(item, thresholds);
         item.isWarmingUp = checkWarmingUp(item, 3);
