@@ -413,10 +413,11 @@ async function showTmAnalysis(forceUpdate=false){
         }
     }
 
-    let hot15, zodiacs;
+    let hot15, zodiacs, isCloud = false;
     
     if (cloudRecommendation && !forceUpdate) {
         // ★ 云端有当前期推荐 → 直接使用（多端一致）
+        isCloud = true;
         hot15 = cloudRecommendation.nums.map(n => ({
             num: n.num,
             level: n.level || 'supplement',
@@ -430,7 +431,11 @@ async function showTmAnalysis(forceUpdate=false){
             zodiac: z.zodiac,
             level: z.level || 'supplement',
             score: z.score || 0,
-            category: z.category || ''
+            category: z.category || '',
+            freq: z.freq || 0,           // ★ 补充：频率
+            miss: z.miss || 0,           // ★ 补充：遗漏
+            freqRate: z.freqRate || 0,   // ★ 补充：出现率
+            consecutiveMiss: z.consecutiveMiss || 0  // ★ 补充：连续遗漏
         }));
         console.log(`✅ 使用云端${currentPeriod}期推荐`);
     } else if (cloudError && !forceUpdate) {
@@ -472,7 +477,7 @@ async function showTmAnalysis(forceUpdate=false){
     saveHot15History(hot15, latest, history, zodiacs);  // ★ 传入生肖
     
     // ⭐ 直接传给renderTm，不再让它重新计算
-    await renderTm(currentAnalysis, currentPeriod, {nums: hot15, zodiacNums: zodiacs});
+    await renderTm(currentAnalysis, currentPeriod, {nums: hot15, zodiacNums: zodiacs, isCloud: isCloud});
 
     if(forceUpdate){
         showToast("♻️ 已手动刷新分析结果");
@@ -861,28 +866,6 @@ async function unifiedSelect(statsData, config = {}) {
             return pool.slice(start, start + maxCount);
         }
 
-        // ★ cold层0频次号覆盖机制（选2个轮换覆盖）
-        if (category === 'cold') {
-            let zeroFreq = pool.filter(c => c.freq === 0);
-            if (zeroFreq.length > 1) {
-                let excludeNums = await getRecentlyRecommendedColdNums(2);
-                let available = zeroFreq.filter(c => !excludeNums.includes(String(c.id)));
-                
-                // 选2个0频次号移到最前面
-                for (let i = 0; i < 2 && available.length > 0; i++) {
-                    let idx = rotateFactor % available.length;
-                    let selectedZero = available[idx];
-                    let pos = pool.findIndex(c => c === selectedZero || c.id === selectedZero.id);
-                    if (pos >= 0) {
-                        pool.splice(pos, 1);
-                        pool.unshift(selectedZero);
-                    }
-                    // 已选的从available中移除，避免重复
-                    available.splice(idx, 1);
-                }
-            }
-        }
-
         return pool.slice(0, maxCount);
     }
 
@@ -1037,9 +1020,6 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
     // ★ 记录当前显示的期号（用于云端加载后重新渲染）
     window.currentDisplayPeriod = currentPeriod;
 
-    let top30 = [...(result.top || [])].sort((a, b) => a - b);
-    let kill = [...(result.kill || [])].sort((a, b) => a - b);
-
     // ★ 获取最新开奖期号，用于判断是否为历史期
     let latestQishu = 0;
     try {
@@ -1145,7 +1125,7 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
 
     // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理
     // renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
-    
+
     // ★ 分层格式化号码显示（方案B：组首标图标）
     let shownLevels = new Set();  // 记录已显示图标的层级
     let numsHtml = nums.map((item, index) => {
