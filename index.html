@@ -856,7 +856,7 @@ async function unifiedSelect(statsData, config = {}) {
 
         // ★★★ 扩大候选池 + 轮换选择（覆盖更多号码/生肖）
         // 候选池大小：取 min(全部候选, maxCount × 3)，但至少取 maxCount 个
-        let poolSize = Math.min(candidates.length, Math.max(maxCount * 3, maxCount));
+        let poolSize = Math.min(candidates.length, Math.max(maxCount * 5, maxCount));
         let pool = candidates.slice(0, poolSize);
         
         // 用 rotateFactor 滑动窗口选择，每期选不同的组合
