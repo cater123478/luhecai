@@ -449,8 +449,8 @@ async function showTmAnalysis(forceUpdate=false){
         throw new Error("CLOUD_ERROR");  // ← 抛出错误让init()知道失败了
     } else if (!CLOUD_API_KEY) {
         // ★ 无API Key → 本地模式（单设备）
-        hot15 = await getHotNumbers(history);
-        zodiacs = await getHotZodiacs(history);
+        hot15 = await getHotNumbers(history, 15, Number(latest.qishu));
+        zodiacs = await getHotZodiacs(history, 4, Number(latest.qishu));
     } else {
         // ★ 云端无当前期推荐 → 计算并保存（首次/强制刷新）
         if (CLOUD_API_KEY) {
@@ -460,8 +460,8 @@ async function showTmAnalysis(forceUpdate=false){
                 console.log("云端历史同步失败:", e.message);
             }
         }
-        hot15 = await getHotNumbers(history);
-        zodiacs = await getHotZodiacs(history);
+        hot15 = await getHotNumbers(history, 15, Number(latest.qishu));
+        zodiacs = await getHotZodiacs(history, 4, Number(latest.qishu));
     }
 
     currentAnalysis = {
@@ -785,7 +785,8 @@ async function getRecentlyRecommendedColdNums(periods = 2) {
         return [...new Set(recommendedColdNums)];  // 去重
 }
 
-async function unifiedSelect(statsData, config = {}) {
+async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
+  // console.log("滑动因子：" + rotateFactor)
     let {
         count = 15,
         quotas = {},
@@ -819,16 +820,17 @@ async function unifiedSelect(statsData, config = {}) {
     
     // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
     // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
-    let dataVersionPeriod = 0;
-    try {
-        let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-        if (rawHistory && rawHistory.length > 0) {
-            dataVersionPeriod = Math.max(...rawHistory.map(item => {
-                return parseInt(item.qishu || item.expect || item.period || 0) || 0;
-            }));
-        }
-    } catch (e) {}
-    let rotateFactor = dataVersionPeriod > 0 ? dataVersionPeriod : new Date().getDate();
+    // let dataVersionPeriod = 0;
+    // try {
+    //     let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    //     if (rawHistory && rawHistory.length > 0) {
+    //         dataVersionPeriod = Math.max(...rawHistory.map(item => {
+    //             return parseInt(item.qishu || item.expect || item.period || 0) || 0;
+    //         }));
+    //     }
+    // } catch (e) {}
+    // let rotateFactor = dataVersionPeriod > 0 ? dataVersionPeriod : new Date().getDate();
+      if (!rotateFactor) rotateFactor = new Date().getDate();
 
     // ★ 辅助函数：统一选择逻辑（科学评分 + 冷却期 + 扩大候选池轮换）
     async function selectFromCategory(category, maxCount) {
@@ -856,7 +858,7 @@ async function unifiedSelect(statsData, config = {}) {
 
         // ★★★ 扩大候选池 + 轮换选择（覆盖更多号码/生肖）
         // 候选池大小：取 min(全部候选, maxCount × 3)，但至少取 maxCount 个
-        let poolSize = Math.min(candidates.length, Math.max(maxCount * 5, maxCount));
+        let poolSize = Math.min(candidates.length, Math.max(maxCount * 3, maxCount));
         let pool = candidates.slice(0, poolSize);
         
         // 用 rotateFactor 滑动窗口选择，每期选不同的组合
@@ -919,7 +921,7 @@ async function unifiedSelect(statsData, config = {}) {
 }
 
 // ===== 50期热号15码（使用统一引擎）=====
-async function getHotNumbers(history, count = 15) {
+async function getHotNumbers(history, count = 15, latestQishu = 0)  {
     // 1-49 号码列表
     const ALL_NUMS = Array.from({ length: 49 }, (_, i) => i + 1);
 
@@ -963,12 +965,12 @@ async function getHotNumbers(history, count = 15) {
         quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 均衡分配
         scoreFn: numScoreFn,
         displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
-    });
+    }, latestQishu);
 
     return result;
 }
 
-async function getHotZodiacs(history, count = 4) {
+async function getHotZodiacs(history, count = 4, latestQishu = 0) {
     // 12生肖列表
     const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
 
@@ -1010,7 +1012,7 @@ async function getHotZodiacs(history, count = 4) {
         quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖配额
         scoreFn: zodiacScoreFn,
         displayLevels: { core: 1, supplement: 3 }  // 🔥1个 ⭐2个 💎1个
-    });
+    }, latestQishu);
 
     return result;
 }
