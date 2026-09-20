@@ -864,7 +864,8 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
         // 用 rotateFactor 滑动窗口选择，每期选不同的组合
         if (pool.length > maxCount) {
             let maxStart = pool.length - maxCount;
-            let start = rotateFactor % (maxStart + 1);
+            // 每期移1位，换更多号
+            let start = (rotateFactor * 1) % (maxStart + 1);
             return pool.slice(start, start + maxCount);
         }
 
@@ -979,7 +980,7 @@ async function getHotNumbers(history, count = 15, latestQishu = 0)  {
         // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿，近期惩罚
         let coldBonus = (item.freq === 0) ? 2 : 0;
         let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
-        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
+        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.15 + coldBonus - recentPenalty;
     });
 
     // ★ 步骤3：使用统一引擎选择
@@ -987,7 +988,7 @@ async function getHotNumbers(history, count = 15, latestQishu = 0)  {
     let numScoreFn = (item) => {
         let coldBonus = (item.freq === 0) ? 2 : 0;  // 0次号小补偿
         let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
-        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
+        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.15 + coldBonus - recentPenalty;
     };
 
     let result = await unifiedSelect(stats, {
