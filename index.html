@@ -875,13 +875,25 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
     const categoryOrder = ['hot', 'warm', 'cold'];
 
     for (let cat of categoryOrder) {
-        if (finalQuotas[cat] > 0) {
-            let picks = await selectFromCategory(cat, finalQuotas[cat]);
-            picks.forEach(p => {
-                result.push(p);
-                used.add(p.id);
-            });
-        }
+      if (finalQuotas[cat] > 0) {
+          let available = statsData.filter(item => item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)).length;
+
+          // 候选不够 → 配额转给上一级
+          if (available <= finalQuotas[cat]) {
+              let transferTo = cat === 'cold' ? 'warm' : (cat === 'warm' ? 'hot' : null);
+              if (transferTo) {
+                  finalQuotas[transferTo] += finalQuotas[cat];
+                  finalQuotas[cat] = 0;
+                  continue;
+              }
+          }
+
+          let picks = await selectFromCategory(cat, finalQuotas[cat]);
+          picks.forEach(p => {
+              result.push(p);
+              used.add(p.id);
+          });
+      }
     }
 
     // ★ 如果还不够，从剩余候选中补满（排除冷却期的号）
