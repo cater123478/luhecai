@@ -878,9 +878,27 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
       if (finalQuotas[cat] > 0) {
           let available = statsData.filter(item => item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)).length;
 
-          // 候选不够 → 配额转给上一级
+          // 候选不够 → 处理
           if (available <= finalQuotas[cat]) {
-              let transferTo = cat === 'cold' ? 'warm' : (cat === 'warm' ? 'hot' : null);
+              // ★ cold 特殊处理：1/3概率选cold，2/3转走；rotateFactor是上一期期号
+              if (cat === 'cold' && available > 0) {
+                  if (rotateFactor % 3 === 0) {
+                      // 选 cold
+                      let picks = await selectFromCategory(cat, finalQuotas[cat]);
+                      picks.forEach(p => {
+                          result.push(p);
+                          used.add(p.id);
+                      });
+                  } else {
+                      // 转给 warm
+                      finalQuotas.warm += finalQuotas.cold;
+                      finalQuotas.cold = 0;
+                  }
+                  continue;
+              }
+
+              // warm/hot 候选不够 → 转给上一级
+              let transferTo = cat === 'warm' ? 'hot' : null;
               if (transferTo) {
                   finalQuotas[transferTo] += finalQuotas[cat];
                   finalQuotas[cat] = 0;
