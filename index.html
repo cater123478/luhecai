@@ -1181,7 +1181,8 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         let freq = item.freq ?? 0;
         let miss = item.miss ?? 0;
         let consec = item.consecutiveMiss ?? 0;
-        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
+        let zodiac = getZodiac(num);
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
     }).join(' ');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
@@ -1218,7 +1219,7 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
 }
 
 // ★ 手机端/PC端 点击显示号码详情
-function showNumDetail(el, num, freq, miss, consecMiss, score) {
+function showNumDetail(el, num, zodiac, freq, miss, consecMiss, score) {
     // 移除其他已打开的详情框
     let old = document.getElementById('numDetailPopup');
     if (old) old.remove();
@@ -1227,7 +1228,7 @@ function showNumDetail(el, num, freq, miss, consecMiss, score) {
     popup.id = 'numDetailPopup';
     popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
     popup.innerHTML = `
-        <div style="font-size:24px;font-weight:bold;color:#e74c3c;margin-bottom:10px;">${num}号</div>
+        <div style="font-size:24px;font-weight:bold;color:#e74c3c;margin-bottom:10px;">${num}号（${zodiac}）</div>
         <div style="color:#333;line-height:1.8;">
             频率：<b>${freq}</b> 次<br>
             总遗漏：<b>${miss}</b> 期<br>
@@ -1253,12 +1254,12 @@ function showNumDetail(el, num, freq, miss, consecMiss, score) {
 function showZodiacDetail(el, zodiac, freq, freqRate, miss, score) {
     let old = document.getElementById('numDetailPopup');
     if (old) old.remove();
-    
+    let nums = SHENGXIAO_MAP[zodiac] || [];
     let popup = document.createElement('div');
     popup.id = 'numDetailPopup';
     popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
     popup.innerHTML = `
-        <div style="font-size:24px;font-weight:bold;color:#3498db;margin-bottom:10px;">🐭 ${zodiac}</div>
+        <div style="font-size:24px;font-weight:bold;color:#3498db;margin-bottom:10px;">🐭 ${zodiac}（${nums.join(',')}）</div>
         <div style="color:#333;line-height:1.8;">
             频率：<b>${freq}</b> 次<br>
             出现率：<b>${(freqRate * 100).toFixed(1)}</b>%<br>
