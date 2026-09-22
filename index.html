@@ -277,32 +277,11 @@ function formatNums(nums) {
 // ===== 数据 =====
 async function fetchRaw(){
     try {
-        // 添加10秒超时控制
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        let res = await fetch("https://2026kj.xswqa.app/kjapi/index/index/kjdata?g=am&t=", {
-            cache: "no-store",
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        if(!res.ok){
-            throw new Error(`接口状态异常: ${res.status}`);
-        }
-        let text = await res.text();
-        try{
-            return JSON.parse(text);
-        }catch(e){
-            console.warn("返回不是JSON：", text.substring(0, 200));
-            return { data: [] };
-        }
-    }catch(e){
-        if (e.name === 'AbortError') {
-            console.error("接口请求超时（>10秒）");
-        } else {
-            console.error("接口请求失败");
-        }
+        let res = await fetch('kj.json?t=' + Date.now());
+        if(!res.ok) throw new Error("文件不存在");
+        let json = await res.json();
+        return { data: json.data || [] };
+    } catch(e) {
         return { data: [] };
     }
 }
