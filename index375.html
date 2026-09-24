@@ -1665,6 +1665,25 @@ async function loadFromCloud() {
 }
 
 async function init(){
+    // ★ URL 参数 r=1 强制重算
+    let urlParams = new URLSearchParams(location.search);
+    let forceRecalc = urlParams.get('r') === '1';
+
+    if (forceRecalc) {
+        try {
+            let {data: list} = await getCloudData();
+            let latest = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+            let currentPeriod = latest.length > 0 ? Number(latest[0].qishu) + 1 : 0;
+            if (currentPeriod > 0) {
+                list = list.filter(r => r.expect !== currentPeriod);
+                await saveCloudData(list);
+                sessionStorage.removeItem('luhecai_cloud_cache');
+                console.log('✅ 已清空' + currentPeriod + '期云端缓存，将重新计算');
+            }
+        } catch(e) {
+            console.log('清空失败:', e.message);
+        }
+    }
     let useCache = false;  // ★ 是否使用了缓存数据
     let box = document.getElementById("indexOut");
     
