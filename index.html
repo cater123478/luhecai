@@ -1672,7 +1672,9 @@ async function init(){
                 list = list.filter(r => r.expect !== currentPeriod);
                 await saveCloudData(list);
                 sessionStorage.removeItem('luhecai_cloud_cache');
-                console.log('✅ 已清空' + currentPeriod + '期云端缓存，将重新计算');
+                let tip = '✅ 已清空' + currentPeriod + '期云端缓存，将重新计算';
+                console.log(tip);
+                showToast(tip)
             }
         } catch(e) {
             console.log('清空失败:', e.message);
