@@ -201,11 +201,6 @@ async function saveCloudData(data) {
     }
 }
 
-function seededRandom(seed) {
-    let x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-}
-
 // 所有号码按生肖分组
 const SHENGXIAO_MAP = {
     '马': [1, 13, 25, 37, 49],
@@ -769,13 +764,12 @@ async function getRecentlyRecommendedColdNums(periods = 2) {
 }
 
 async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
+  // console.log("滑动因子：" + rotateFactor)
     let {
         count = 15,
         quotas = {},
         scoreFn = null,
-        displayLevels = {},
-        shuffle = false,
-        debugKey = null  // ★ 调试标记：'num' 或 'zodiac'
+        displayLevels = {}
     } = config;
 
     // ★ 默认配额（根据总数智能分配）
@@ -797,9 +791,6 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
 
     let result = [];
     let used = new Set();
-    // ★ 初始化对应调试对象
-    if (debugKey === 'num') window.debugNumResults = {};
-    if (debugKey === 'zodiac') window.debugZodiacResults = {};
     
     // ★★★ 统一冷却期机制：刚开过1-2期的号（miss ≤ 2）统一标记
     const COOLING_MISS_THRESHOLD = 2;
@@ -827,59 +818,32 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
 
         if (candidates.length === 0) return [];
 
-        // ★★★ 统一冷却期：只保留非冷却的号
+        // ★★★ 统一冷却期：只保留非冷却的号（不补冷却的）
         let nonCooling = candidates.filter(c => !coolingIds.has(c.id));
-        candidates = nonCooling;
-        if (candidates.length === 0) return [];
+
+        candidates = nonCooling;  // 只用非冷却的，宁缺毋滥
 
         // ★★★ 统一排序：科学评分 + 冷却惩罚
         candidates.sort((a, b) => {
             let scoreA = scoreFn ? scoreFn(a) : (a.freq * SCORE_FREQ_WEIGHT + Math.sqrt(a.miss) * SCORE_MISS_WEIGHT);
             let scoreB = scoreFn ? scoreFn(b) : (b.freq * SCORE_FREQ_WEIGHT + Math.sqrt(b.miss) * SCORE_MISS_WEIGHT);
+
             if (coolingIds.has(a.id)) scoreA -= 20;
             if (coolingIds.has(b.id)) scoreB -= 20;
-            return scoreB - scoreA;
+
+            return scoreB - scoreA;  // 分数高的排前
         });
 
-        // ★★★ 按 freq 分组，按比例分配 pool 名额
-        let poolSize = Math.max(maxCount * 3, maxCount);
-        let groups = {};
-        candidates.forEach(c => {
-            let key = c.freq;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(c);
-        });
+        // ★★★ 扩大候选池 + 轮换选择（覆盖更多号码/生肖）
+        // 候选池大小：取 min(全部候选, maxCount × 3)，但至少取 maxCount 个
+        let poolSize = Math.min(candidates.length, Math.max(maxCount * 3, maxCount));
+        let pool = candidates.slice(0, poolSize);
 
-        let groupKeys = Object.keys(groups).sort((a, b) => b - a);
-        let pool = [];
-        let remaining = poolSize;
-
-        groupKeys.forEach((key, idx) => {
-            let groupSize = groups[key].length;
-            let quota;
-            if (idx === groupKeys.length - 1) {
-                quota = remaining;
-            } else {
-                quota = Math.round(poolSize * groupSize / candidates.length);
-            }
-            quota = Math.min(quota, groupSize, remaining);
-            pool.push(...groups[key].slice(0, quota));
-            remaining -= quota;
-        });
-
-        // ★★★ 按 shuffle 参数决定是否洗牌
-        if (shuffle) {
-            for (let i = pool.length - 1; i > 0; i--) {
-                let j = Math.floor(seededRandom(rotateFactor + i) * (i + 1));
-                [pool[i], pool[j]] = [pool[j], pool[i]];
-            }
-        }
-
-        // 轮换窗口
+        // 用 rotateFactor 滑动窗口选择，每期选不同的组合
         let picks;
         if (pool.length > maxCount) {
             let maxStart = pool.length - maxCount;
-            let start = rotateFactor % (maxStart + 1);
+            let start = (rotateFactor * 1) % (maxStart + 1);
             picks = pool.slice(start, start + maxCount);
         } else {
             picks = pool.slice(0, maxCount);
@@ -891,14 +855,17 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
             let need = 1 - zeroInPicks;
 
             if (need > 0) {
+                // 从候选池里找没被选的 0 次号
                 let zeroPool = candidates.filter(c => c.freq === 0 && !picks.includes(c));
                 zeroPool.sort((a, b) => a.id - b.id);
 
                 if (zeroPool.length > 0) {
+                    // 用 rotateFactor 轮换，每期取不同的 0 次号
                     let maxStart = Math.max(0, zeroPool.length - need);
                     let start = rotateFactor % (maxStart + 1);
                     let zeroToAdd = zeroPool.slice(start, start + need);
 
+                    // 替换掉 picks 里评分最低的 1 次号
                     for (let z of zeroToAdd) {
                         let onceInPicks = picks.filter(c => c.freq === 1);
                         if (onceInPicks.length === 0) break;
@@ -916,58 +883,45 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
 
     // ★ 按类别顺序选择：hot → warm → cold → overheat（补充用）
     const categoryOrder = ['hot', 'warm', 'cold'];
+
     for (let cat of categoryOrder) {
         if (finalQuotas[cat] > 0) {
             let available = statsData.filter(item =>
                 item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)
             ).length;
 
-            // ★ 候选 <= 配额时，分两种情况处理
-            if (available > 0 && available <= finalQuotas[cat]) {
-
-                // 情况1：候选刚好等于配额 → 按概率转走（避免常驻）
-                if (available === finalQuotas[cat]) {
-                    if (rotateFactor % 3 === 0) {
-                        let picks = await selectFromCategory(cat, available);
-                        picks.forEach(p => {
-                            result.push(p);
-                            used.add(p.id);
-                        });
-                        if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
-                        if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
-                    } else {
-                        let transferTo = cat === 'hot' ? 'warm' : (cat === 'warm' ? 'cold' : 'warm');
-                        finalQuotas[transferTo] += finalQuotas[cat];
-                        finalQuotas[cat] = 0;
-                    }
-                    continue;
-                }
-
-                // 情况2：候选 < 配额 → 先选完能选的，剩余配额转走
-                let picks = await selectFromCategory(cat, available);
-                picks.forEach(p => {
-                    result.push(p);
-                    used.add(p.id);
-                });
-                if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
-                if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
-
-                let remaining = finalQuotas[cat] - picks.length;
-                if (remaining > 0) {
-                    let transferTo = cat === 'hot' ? 'warm' : (cat === 'warm' ? 'cold' : 'warm');
-                    finalQuotas[transferTo] += remaining;
+            // ★ cold 特殊处理：候选 <= 配额 时按概率转走（只对生肖生效）
+            if (cat === 'cold' && available > 0 && available <= finalQuotas[cat]) {
+                if (rotateFactor % 3 === 0) {
+                    // 选 cold
+                    let picks = await selectFromCategory(cat, finalQuotas[cat]);
+                    picks.forEach(p => {
+                        result.push(p);
+                        used.add(p.id);
+                    });
+                } else {
+                    // 转给 warm
+                    finalQuotas.warm += finalQuotas.cold;
+                    finalQuotas.cold = 0;
                 }
                 continue;
             }
 
-            // 情况3：候选 > 配额 → 正常选
+            // ★ warm/hot：只有真的不够才转移（用 <，不用 <=）
+            if (available < finalQuotas[cat]) {
+                let transferTo = cat === 'warm' ? 'hot' : null;
+                if (transferTo) {
+                    finalQuotas[transferTo] += finalQuotas[cat];
+                    finalQuotas[cat] = 0;
+                    continue;
+                }
+            }
+
             let picks = await selectFromCategory(cat, finalQuotas[cat]);
             picks.forEach(p => {
                 result.push(p);
                 used.add(p.id);
             });
-            if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
-            if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
         }
     }
 
@@ -1049,11 +1003,9 @@ async function getHotNumbers(history, count = 15, latestQishu = 0)  {
 
     let result = await unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },
+        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 均衡分配
         scoreFn: numScoreFn,
-        shuffle: true,
-        displayLevels: { core: 5, supplement: 10 },
-        debugKey: 'num'
+        displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
     }, latestQishu);
 
     return result;
@@ -1098,11 +1050,9 @@ async function getHotZodiacs(history, count = 4, latestQishu = 0) {
 
     let result = await unifiedSelect(stats, {
         count: count,
-        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },
+        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖配额
         scoreFn: zodiacScoreFn,
-        shuffle: false,
-        displayLevels: { core: 1, supplement: 3 },
-        debugKey: 'zodiac'
+        displayLevels: { core: 1, supplement: 3 }  // 🔥1个 ⭐2个 💎1个
     }, latestQishu);
 
     return result;
@@ -1214,6 +1164,8 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
             }
         }
     }
+    let label = `热号15码`;
+
     // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理
     // renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
 
@@ -1265,22 +1217,6 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         let zMiss = item.miss ?? 0;
         return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zFreqRate}, ${zMiss}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
-
-    let debugMode = new URLSearchParams(location.search).get('debug') === '1';
-    let debugHtml = '';
-    if (debugMode) {
-        let dn = window.debugNumResults || {};
-        let dz = window.debugZodiacResults || {};
-        debugHtml = `
-        <br><br><small style="color:#999;font-size:11px;line-height:1.8;">
-        🔧 <b>号码</b> hot: ${(dn.hot || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> warm: ${(dn.warm || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> cold: ${(dn.cold || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> hot: ${(dz.hot || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> warm: ${(dz.warm || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> cold: ${(dz.cold || []).join(', ') || '无'}
-        </small>`;
-    }
     
     document.getElementById("tmOut").innerHTML = `
     <div class="card tm">
@@ -1288,7 +1224,6 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
     🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>
     <!--<small style="color:#666;">(🔥核心5个 ⭐补充5个 💎观察5个)</small><br>--><br>
     🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>
-    ${debugHtml}
     <!--<small style="color:#666;">(🔥必选 ⭐备选 💎观察)</small><br>-->
     </div>`;
 }
@@ -1813,7 +1748,6 @@ async function init(){
         // ★ 根据实际数据来源显示提示
         showToast(fromCache ? `✅ 数据已加载` : `✅ 数据已更新`);
     } catch(e) {
-        console.log('init 报错:', e.message, e.stack);
         if (e.message !== "CLOUD_ERROR") {
             showToast(`❌ 加载失败`);
         }
