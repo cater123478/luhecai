@@ -97,9 +97,9 @@ h2{text-align:center;}
 .mq-tm{
   background:#ff5722;
   font-weight:bold;
-  transform:scale(1.15);
+  transform:scale(1.25);
   box-shadow:0 0 6px rgba(255,87,34,0.7);
-  margin-left: 8px;
+  margin-left: 15px;
 }
 </style>
 </head>
@@ -1512,8 +1512,11 @@ async function showTmHistory(){
       if (i.open === null || i.open === undefined) {
           html += ` <span style="color:#999;font-size:11px;">（⏳ 开奖结果待更新）</span>`;
       } else {
+          // let openZodiac = getZodiac(i.open);
+          // html += ` <span style="color:#999;font-size:11px;">开奖：${i.open}（${openZodiac}）</span>`;
           let openZodiac = getZodiac(i.open);
-          html += ` <span style="color:#999;font-size:11px;">开奖：${i.open}（${openZodiac}）</span>`;
+          let openColor = getBoseColor(i.open);
+          html += ` <span style="color:#999;font-size:11px;">开奖：<b style="color:${openColor || '#999'};">${i.open}</b>（${openZodiac}）</span>`;
       }
       html += `<br>`;
       
@@ -1538,7 +1541,12 @@ async function showTmHistory(){
           if (num === undefined || num === null) num = '?';
           
           let isHit = Number(num) === i.open;
-          return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;
+          /*return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;*/
+          if (isHit) {
+              let color = getBoseColor(Number(num));
+              return `<b style="color:${color || '#ff5722'};background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>`;
+          }
+          return num;
       }).join(', ');
       html += `🎯 号码推荐：${numsHtml}<br>`;
       
@@ -1599,7 +1607,7 @@ async function silentUpdateMissingResults(list) {
     if (needUpdate.length === 0) return;
 
     try {
-        const data = await fetchData();
+        const data = await fetchData(true);
         let updated = false;
         
         for (let item of needUpdate) {
