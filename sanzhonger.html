@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+<title>三中二推荐 · 正码</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fb; padding: 16px 12px 40px; color: #0f172a; }
+.container { max-width: 650px; margin: 0 auto; }
+h1 { font-size: 1.5rem; font-weight: 600; text-align: center; margin-bottom: 12px; }
+.card { background: #fff; border-radius: 16px; padding: 14px; margin-bottom: 14px; border: 1px solid #e9edf2; }
+.card-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 10px; color: #475569; }
+.group-selector { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.group-btn { padding: 6px 16px; border-radius: 30px; border: 1px solid #dce1e8; background: #fff; font-size: 0.85rem; cursor: pointer; }
+.group-btn.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.candidate-nums { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.num-chip { background: #f1f4f9; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; }
+.num-chip.high { background: #fef2f2; color: #b91c1c; }
+.num-chip.mid { background: #fff7ed; color: #c2410c; }
+.num-chip.low { background: #f0fdf4; color: #15803d; }
+.bet-group { background: #f8fafc; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.bet-group-label { font-weight: 700; color: #0f172a; min-width: 50px; font-size: 0.85rem; }
+.bet-group-nums { font-family: 'Courier New', monospace; font-size: 0.95rem; letter-spacing: 1px; color: #1e293b; }
+.coverage-info { font-size: 0.8rem; color: #64748b; margin-top: 10px; padding: 8px 12px; background: #f1f5f9; border-radius: 10px; line-height: 1.6; }
+.loading { text-align: center; padding: 40px 20px; color: #666; }
+.back-btn { position: fixed; top: 10px; right: 10px; z-index: 99999; background: #fff; color: #333; padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+</style>
+</head>
+<body>
+<div style="position:fixed;top:18px;left:10px;z-index:99999;background:#9c27b0;color:#333;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
+<div class="container">
+    <h1>🎯 三中二推荐</h1>
+
+    <div class="card">
+        <div class="card-title">📊 组数选择</div>
+        <div class="group-selector" id="groupSelector">
+            <button class="group-btn" data-count="3">3组</button>
+            <button class="group-btn" data-count="5">5组</button>
+            <button class="group-btn" data-count="6">6组</button>
+            <button class="group-btn" data-count="8">8组</button>
+            <button class="group-btn" data-count="10">10组</button>
+            <button class="group-btn active" data-count="11">11组(100%)</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📊 正码频率 Top15（候选池）</div>
+        <div class="candidate-nums" id="candidateNums">加载中...</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">💰 投注组</div>
+        <div id="betGroups">加载中...</div>
+        <div class="coverage-info" id="coverageInfo"></div>
+    </div>
+</div>
+
+<script>
+// ===== 生肖/波色映射 =====
+const ZODIAC_MAP = {
+    1:'马',2:'蛇',3:'龙',4:'兔',5:'虎',6:'牛',7:'鼠',8:'猪',9:'狗',10:'鸡',11:'猴',12:'羊',
+    13:'马',14:'蛇',15:'龙',16:'兔',17:'虎',18:'牛',19:'鼠',20:'猪',21:'狗',22:'鸡',23:'猴',24:'羊',
+    25:'马',26:'蛇',27:'龙',28:'兔',29:'虎',30:'牛',31:'鼠',32:'猪',33:'狗',34:'鸡',35:'猴',36:'羊',
+    37:'马',38:'蛇',39:'龙',40:'兔',41:'虎',42:'牛',43:'鼠',44:'猪',45:'狗',46:'鸡',47:'猴',48:'羊',49:'马'
+};
+const BOSE_MAP = {
+    '红波': [1,2,7,8,12,13,18,19,23,24,29,30,34,35,40,45,46],
+    '蓝波': [3,4,9,10,14,15,20,25,26,31,36,37,41,42,47,48],
+    '绿波': [5,6,11,16,17,21,22,27,28,32,33,38,39,43,44,49]
+};
+
+function getZodiac(n) { return ZODIAC_MAP[n] || ''; }
+function getBoseColor(n) {
+    if (BOSE_MAP['红波'].includes(n)) return '#e74c3c';
+    if (BOSE_MAP['蓝波'].includes(n)) return '#0d93ea';
+    if (BOSE_MAP['绿波'].includes(n)) return '#2ecc71';
+    return '#333';
+}
+function seededRandom(seed) {
+    let x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+function pad(n) { return n.toString().padStart(2, '0'); }
+
+// ===== 读 kj.json =====
+async function fetchData() {
+    try {
+        let res = await fetch('kj.json?t=' + Date.now());
+        if (!res.ok) throw new Error('文件不存在');
+        let json = await res.json();
+        return json.data || [];
+    } catch(e) {
+        console.log('读取失败', e);
+        return [];
+    }
+}
+
+// ===== 统计正码频率 =====
+function calcZhengMaStats(raw) {
+    let data = raw.slice(0, 50);
+    let freq = {};
+    let lastMiss = {};
+    for (let i = 1; i <= 49; i++) { freq[i] = 0; lastMiss[i] = 999; }
+
+    for (let i = 0; i < data.length; i++) {
+        let nums = data[i].num.split(',').map(Number);
+        let zhengMa = nums.slice(0, 6);  // 前6个是正码
+        for (let n of zhengMa) {
+            freq[n] = (freq[n] || 0) + 1;
+            if (lastMiss[n] === 999) lastMiss[n] = i;
+        }
+    }
+
+    let result = [];
+    for (let i = 1; i <= 49; i++) {
+        let miss = lastMiss[i] === 999 ? 50 : lastMiss[i];
+        result.push({
+            num: i,
+            freq: freq[i],
+            miss: miss,
+            score: freq[i] * 10 + Math.sqrt(Math.min(miss, 50)) * 2
+        });
+    }
+    result.sort((a, b) => b.score - a.score);
+    return result;
+}
+
+// ===== 取候选池 top15 =====
+function getTop15(stats) {
+    return stats.slice(0, 15);
+}
+
+// ===== 洗牌 + 取前8 =====
+function pick8(candidates, rotateFactor) {
+    let shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        let j = Math.floor(seededRandom(rotateFactor + i) * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, 8).map(c => c.num).sort((a, b) => a - b);
+}
+
+// ===== 生成 N 组，覆盖尽量全 =====
+// ===== 11组最优覆盖模板（穷举验证，100%覆盖28对） =====
+const OPTIMAL_TEMPLATE_11 = [
+    [0,1,2],
+    [0,3,4],
+    [0,5,6],
+    [0,7,1],
+    [1,3,5],
+    [1,4,6],
+    [2,3,7],
+    [2,4,5],
+    [2,6,7],
+    [3,6,7],
+    [4,5,7]
+];
+
+function generateGroups(nums8, groupCount) {
+    let sorted = [...nums8].sort((a, b) => a - b);
+    let template = OPTIMAL_TEMPLATE_11.slice(0, Math.min(groupCount, 11));
+    let groups = template.map(t => t.map(idx => sorted[idx]));
+
+    let pairs = new Set();
+    groups.forEach(g => {
+        for (let i = 0; i < 3; i++) {
+            for (let j = i + 1; j < 3; j++) {
+                pairs.add([g[i], g[j]].sort((a, b) => a - b).join(','));
+            }
+        }
+    });
+
+    return {
+        groups: groups,
+        totalPairs: 28,
+        coveredPairs: pairs.size
+    };
+}
+
+// ===== 贪心（备用） =====
+function greedyGroups(allGroups, groupPairs, allPairs, groupCount) {
+    let uncovered = new Set(allPairs);
+    let selected = [];
+    let used = new Set();
+
+    while (selected.length < groupCount && uncovered.size > 0) {
+        let bestIdx = -1;
+        let bestCover = -1;
+        for (let i = 0; i < allGroups.length; i++) {
+            if (used.has(i)) continue;
+            let cover = groupPairs[i].filter(p => uncovered.has(p)).length;
+            if (cover > bestCover) {
+                bestCover = cover;
+                bestIdx = i;
+            }
+        }
+        if (bestIdx === -1 || bestCover === 0) break;
+        selected.push(allGroups[bestIdx]);
+        used.add(bestIdx);
+        groupPairs[bestIdx].forEach(p => uncovered.delete(p));
+    }
+    return selected;
+}
+
+// ===== 渲染 =====
+let allStats = [];
+let rotateFactor = 0;
+let currentGroupCount = 11;
+
+function render() {
+    let candidates = getTop15(allStats);
+    let nums8 = pick8(candidates, rotateFactor);
+
+    // 候选号显示
+    let candidateHtml = candidates.map(c => {
+        let cls = 'num-chip';
+        if (c.freq >= 8) cls += ' high';
+        else if (c.freq >= 5) cls += ' mid';
+        else cls += ' low';
+        return `<span class="${cls}">${pad(c.num)}(${getZodiac(c.num)},${c.freq}次)</span>`;
+    }).join('');
+    document.getElementById('candidateNums').innerHTML = candidateHtml;
+
+    // 生成组
+    let result = generateGroups(nums8, currentGroupCount);
+
+    let groupHtml = '';
+    result.groups.forEach((g, idx) => {
+        let numsHtml = g.map(n => `<span style="color:${getBoseColor(n)};">${pad(n)}</span>`).join(', ');
+        groupHtml += `<div class="bet-group">
+            <span class="bet-group-label">第${idx+1}组</span>
+            <span class="bet-group-nums">${numsHtml}</span>
+        </div>`;
+    });
+    document.getElementById('betGroups').innerHTML = groupHtml;
+
+    // 覆盖信息
+    let coverRate = Math.round(result.coveredPairs / result.totalPairs * 100);
+    document.getElementById('coverageInfo').innerHTML = `
+        📊 候选8码：${nums8.map(pad).join(', ')}<br>
+        ✅ 覆盖对子：${result.coveredPairs} / ${result.totalPairs}（${coverRate}%）<br>
+        💡 8码里中2个正码即中奖（100%覆盖需11组）
+    `;
+}
+
+// ===== 初始化 =====
+async function init() {
+    let raw = await fetchData();
+    if (!raw.length) {
+        document.getElementById('candidateNums').innerHTML = '⚠️ 数据加载失败';
+        return;
+    }
+    allStats = calcZhengMaStats(raw);
+    rotateFactor = Number(raw[0].qishu) || 0;
+    render();
+
+    // 组数切换
+    document.getElementById('groupSelector').addEventListener('click', function(e) {
+        if (!e.target.classList.contains('group-btn')) return;
+        document.querySelectorAll('.group-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentGroupCount = Number(e.target.dataset.count);
+        render();
+    });
+}
+
+init();
+</script>
+</body>
+</html>

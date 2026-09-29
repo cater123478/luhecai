@@ -114,6 +114,7 @@ h2{text-align:center;}
 <button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
 <!--<button class="btn" onclick="fixCorruptedPeriods()" style="background:linear-gradient(45deg,#ff5722,#ff9800);color:#fff;">🔧 修复255期数据</button>-->
 <button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
+<button class="btn" id="btnSanZhongEr" style="display:none;background:linear-gradient(45deg,#9c27b0,#ce93d8);color:#fff;" onclick="window.location.href='sanzhonger.html'">三中二推荐</button>
 
 <div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
 <div id="indexOut"></div>
@@ -1826,6 +1827,13 @@ async function init(){
         if (e.message !== "CLOUD_ERROR") {
             showToast(`❌ 加载失败`);
         }
+    }
+
+    // ★ 域名检测：只有 GitHub Pages 显示三中二按钮
+    if (location.hostname.includes('cater123478.github.io')) {
+    // if (location.hostname.includes('23qt362943bb')) {
+        let btn = document.getElementById('btnSanZhongEr');
+        if (btn) btn.style.display = 'block';
     }
 }
 
