@@ -922,9 +922,9 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
             let available = statsData.filter(item => item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)).length;
             // ★ 候选 <= 配额时，分两种情况处理
             if (available > 0 && available <= finalQuotas[cat]) {
-                // 情况1：候选刚好等于配额 → 按概率转走（只对 cold，避免龙常驻）
-                if (cat === 'cold' && available === finalQuotas[cat]) {
-                    if (rotateFactor % 3 === 0) {
+                // 情况1：候选刚好等于配额 → 按概率转走（避免常驻）
+                if (/*cat === 'cold' && */available === finalQuotas[cat]) {
+                    if (rotateFactor % 2 === 0) {
                         let picks = await selectFromCategory(cat, available);
                         picks.forEach(p => {
                             result.push(p);
