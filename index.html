@@ -919,15 +919,11 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
     const categoryOrder = ['hot', 'warm', 'cold'];
     for (let cat of categoryOrder) {
         if (finalQuotas[cat] > 0) {
-            let available = statsData.filter(item =>
-                item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)
-            ).length;
-
+            let available = statsData.filter(item => item.category === cat && !used.has(item.id) && !coolingIds.has(item.id)).length;
             // ★ 候选 <= 配额时，分两种情况处理
             if (available > 0 && available <= finalQuotas[cat]) {
-
-                // 情况1：候选刚好等于配额 → 按概率转走（避免常驻）
-                if (available === finalQuotas[cat]) {
+                // 情况1：候选刚好等于配额 → 按概率转走（只对 cold，避免龙常驻）
+                if (cat === 'cold' && available === finalQuotas[cat]) {
                     if (rotateFactor % 3 === 0) {
                         let picks = await selectFromCategory(cat, available);
                         picks.forEach(p => {
@@ -945,23 +941,25 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
                 }
 
                 // 情况2：候选 < 配额 → 先选完能选的，剩余配额转走
-                let picks = await selectFromCategory(cat, available);
-                picks.forEach(p => {
-                    result.push(p);
-                    used.add(p.id);
-                });
-                if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
-                if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
+                if (available < finalQuotas[cat]) {
+                    let picks = await selectFromCategory(cat, available);
+                    picks.forEach(p => {
+                      result.push(p);
+                      used.add(p.id);
+                    });
+                    if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
+                    if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
 
-                let remaining = finalQuotas[cat] - picks.length;
-                if (remaining > 0) {
-                    let transferTo = cat === 'hot' ? 'warm' : (cat === 'warm' ? 'cold' : 'warm');
-                    finalQuotas[transferTo] += remaining;
+                    let remaining = finalQuotas[cat] - picks.length;
+                    if (remaining > 0) {
+                      let transferTo = cat === 'hot' ? 'warm' : (cat === 'warm' ? 'cold' : 'warm');
+                      finalQuotas[transferTo] += remaining;
+                    }
+                    continue;
                 }
-                continue;
             }
 
-            // 情况3：候选 > 配额 → 正常选
+            // 情况3：候选 > 配额，或 候选 = 配额且非 cold → 正常选
             let picks = await selectFromCategory(cat, finalQuotas[cat]);
             picks.forEach(p => {
                 result.push(p);
@@ -1739,12 +1737,13 @@ async function init(){
 
     if (forceRecalc) {
         try {
-            localStorage.removeItem("cacheHistory");
-            localStorage.removeItem("cacheHistoryTime");
-            let {data: list} = await getCloudData();
             let latest = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
             let currentPeriod = latest.length > 0 ? Number(latest[0].qishu) + 1 : 0;
+            localStorage.removeItem("cacheHistory");
+            localStorage.removeItem("cacheHistoryTime");
+
             if (currentPeriod > 0) {
+                let {data: list} = await getCloudData();
                 list = list.filter(r => r.expect !== currentPeriod);
                 await saveCloudData(list);
                 sessionStorage.removeItem('luhecai_cloud_cache');
