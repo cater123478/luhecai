@@ -1737,19 +1737,24 @@ async function init(){
 
     if (forceRecalc) {
         try {
-            let latest = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
-            let currentPeriod = latest.length > 0 ? Number(latest[0].qishu) + 1 : 0;
+            // 先拉 kj.json，拿到最新开奖期号
+            let raw = await fetchData(true);
+            let latestQishu = (raw && raw.length > 0) ? Number(raw[0].qishu) : 0;
+            let currentPeriod = latestQishu + 1;  // 未开奖的分析期
+
+            // 清本地缓存
             localStorage.removeItem("cacheHistory");
             localStorage.removeItem("cacheHistoryTime");
 
             if (currentPeriod > 0) {
                 let {data: list} = await getCloudData();
-                list = list.filter(r => r.expect !== currentPeriod);
+                // ★ 只清"未开奖"的当前期，已开奖的记录不动
+                list = list.filter(r => !(r.expect === currentPeriod && r.hit === ""));
                 await saveCloudData(list);
                 sessionStorage.removeItem('luhecai_cloud_cache');
-                let tip = '✅ 已清空' + currentPeriod + '期云端缓存，将重新计算';
+                let tip = '✅ 已清空' + currentPeriod + '期未开奖记录，将重新计算';
                 console.log(tip);
-                alert(tip)
+                alert(tip);
             }
         } catch(e) {
             console.log('清空失败:', e.message);
@@ -1830,11 +1835,11 @@ async function init(){
     }
 
     // ★ 域名检测：只有 GitHub Pages 显示三中二按钮
-    if (location.hostname.includes('cater123478.github.io')) {
-    // if (location.hostname.includes('23qt362943bb')) {
-        let btn = document.getElementById('btnSanZhongEr');
-        if (btn) btn.style.display = 'block';
-    }
+    // if (location.hostname.includes('cater123478.github.io')) {
+    // // if (location.hostname.includes('23qt362943bb')) {
+    //     let btn = document.getElementById('btnSanZhongEr');
+    //     if (btn) btn.style.display = 'block';
+    // }
 }
 
 // ===== 初始化 =====
