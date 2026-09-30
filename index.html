@@ -1595,11 +1595,11 @@ async function showTmHistory(){
       }
       html += `</div><hr>`;
     });
-    html += `</div>`;
-    box.innerHTML = html;
-    
+
     // 静默补全缺失的开奖结果（不刷新页面，避免闪烁）
     silentUpdateMissingResults(list);
+    html += `</div>`;
+    box.innerHTML = html;
 }
 
 // 静默补全缺失的开奖结果（不触发界面刷新）- 纯云端模式
