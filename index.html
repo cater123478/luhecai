@@ -247,7 +247,8 @@ let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
 let loading = false;
 const kjDataSize = 100;
 const hisKjDataSize = 10;
-const fupanSize = 10;
+const cloudFupanSize = 30;  // 云端保存30期历史投注结果
+const fupanShowSize = 10;  // 显示最近10期历史投注结果
 let currentAnalysis = null;
 
 // 生肖映射（按2026年马年规则）
@@ -547,7 +548,7 @@ async function saveHot15History(hot15, latest, history, zodiacs=null) {
                 }
                 
                 // 只保留最近30期
-                existingData = existingData.slice(0, 30);
+                existingData = existingData.slice(0, cloudFupanSize);
                 
                 // 上传到云端（使用统一的saveCloudData）
                 await saveCloudData(existingData);
@@ -1447,8 +1448,8 @@ async function showTmHistory(){
         }
     } catch(e) {}
     
-    // 过滤：只显示已开奖的历史记录（expect <= 最新开奖期号）
-    list = list.filter(i => i.expect && i.expect <= latestQishu).slice(0,fupanSize);
+    // 过滤：只显示已开奖的历史记录（expect <= 最新开奖期号） // 显示最近10期历史投注结果
+    list = list.filter(i => i.expect && i.expect <= latestQishu).slice(0,fupanShowSize);
     
     if(!list.length){
         document.getElementById("tmHistory").innerHTML = "暂无历史投注数据";

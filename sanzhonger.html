@@ -92,6 +92,8 @@ const CLOUD_BIN_ID = "6a9e732eac6210605aaeb76a";
 const JSONBIN_API_URL = "https://api.jsonbin.io/v3";
 const CLOUD_CACHE_KEY = 'sz2_cloud_cache';
 const CLOUD_CACHE_TTL = 30000;  // 30秒缓存
+const CLOUD_FUPAN_SIZE = 30;  // 云端保存30期历史投注结果
+const FUPAN_SHOW_SIZE = 10;  // 显示最近10期历史投注结果
 
 async function getCloudData() {
     let now = Date.now();
@@ -266,17 +268,28 @@ async function processAndRender() {
     }
 
     if (needSave) {
-        cloudList = cloudList.slice(0, 30);
+        cloudList = cloudList.slice(0, CLOUD_FUPAN_SIZE); // 云端保存30期历史投注结果
         await saveCloudData(cloudList);
     }
 
-    // 3. 当前推荐
+    // 3. 当前推荐：直接从云端 currentRec 读取
+    let currentRec2 = cloudList.find(r => r.expect === currentPeriod);
+    let nums8, allGroups;
+    if (currentRec2 && currentRec2.candidateNums && currentRec2.reconums) {
+        nums8 = currentRec2.candidateNums;
+        allGroups = currentRec2.reconums;
+    } else {
+        // 兜底：云端没记录，重算
+        let stats = calcZhengMaStats(raw);
+        let candidates = getTop15(stats);
+        nums8 = pick8(candidates, latestQishu);
+        let groupResult = generateGroups(nums8, 11);
+        allGroups = groupResult.groups;
+    }
+
+    // 渲染候选池（Top15）
     allStats = calcZhengMaStats(raw);
-    rotateFactor = latestQishu;
-
     let candidates = getTop15(allStats);
-    let nums8 = pick8(candidates, rotateFactor);
-
     let candidateHtml = candidates.map(c => {
         let cls = 'num-chip';
         if (c.freq >= 8) cls += ' high';
@@ -286,7 +299,13 @@ async function processAndRender() {
     }).join('');
     document.getElementById('candidateNums').innerHTML = candidateHtml;
 
-    let result = generateGroups(nums8, currentGroupCount);
+    // 渲染投注组：取前 currentGroupCount 组
+    let result = {
+        groups: allGroups.slice(0, currentGroupCount),
+        totalPairs: 28,
+        coveredPairs: countPairs(allGroups.slice(0, currentGroupCount))
+    };
+
     let groupHtml = '';
     result.groups.forEach((g, idx) => {
         let numsHtml = g.map(n => `<span style="color:${getBoseColor(n)};">${pad(n)}</span>`).join(', ');
@@ -305,11 +324,24 @@ async function processAndRender() {
     renderHistory(cloudList, currentPeriod);
 }
 
+// ★ 计算组覆盖的对子数
+function countPairs(groups) {
+    let pairs = new Set();
+    groups.forEach(g => {
+        for (let i = 0; i < 3; i++) {
+            for (let j = i + 1; j < 3; j++) {
+                pairs.add([g[i], g[j]].sort((a, b) => a - b).join(','));
+            }
+        }
+    });
+    return pairs.size;
+}
+
 function renderHistory(cloudList, currentPeriod) {
     let history = cloudList
         .filter(r => r.hit !== "" && r.expect < currentPeriod)
         .sort((a, b) => b.expect - a.expect)
-        .slice(0, 10);
+        .slice(0, FUPAN_SHOW_SIZE); // 显示最近10期历史投注结果
 
     /*if (history.length === 0) {
         document.getElementById('historyCard').style.display = 'none';
@@ -384,18 +416,42 @@ async function init() {
         document.querySelectorAll('.group-btn').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
         currentGroupCount = Number(e.target.dataset.count);
-        let nums8 = pick8(getTop15(allStats), rotateFactor);
-        let result = generateGroups(nums8, currentGroupCount);
+
+        // 从云端读当前期推荐
+        let currentRec = null;
+        try {
+            let c = sessionStorage.getItem(CLOUD_CACHE_KEY);
+            if (c) {
+                let list = JSON.parse(c).data || [];
+                let latestQishu = currentRaw.length > 0 ? Number(currentRaw[0].qishu) : 0;
+                let currentPeriod = latestQishu + 1;
+                currentRec = list.find(r => r.expect === currentPeriod);
+            }
+        } catch(e) {}
+
+        let nums8, allGroups;
+        if (currentRec && currentRec.candidateNums && currentRec.reconums) {
+            nums8 = currentRec.candidateNums;
+            allGroups = currentRec.reconums;
+        } else {
+            // 兜底：重算
+            nums8 = pick8(getTop15(allStats), rotateFactor);
+            allGroups = generateGroups(nums8, 11).groups;
+        }
+
+        let slicedGroups = allGroups.slice(0, currentGroupCount);
         let groupHtml = '';
-        result.groups.forEach((g, idx) => {
+        slicedGroups.forEach((g, idx) => {
             let numsHtml = g.map(n => `<span style="color:${getBoseColor(n)};">${pad(n)}</span>`).join(', ');
             groupHtml += `<div class="bet-group"><span class="bet-group-label">第${idx+1}组</span><span class="bet-group-nums">${numsHtml}</span></div>`;
         });
         document.getElementById('betGroups').innerHTML = groupHtml;
-        let coverRate = Math.round(result.coveredPairs / result.totalPairs * 100);
+
+        let covered = countPairs(slicedGroups);
+        let coverRate = Math.round(covered / 28 * 100);
         document.getElementById('coverageInfo').innerHTML = `
             📊 候选8码：${nums8.map(pad).join(', ')}<br>
-            ✅ 覆盖对子：${result.coveredPairs} / ${result.totalPairs}（${coverRate}%）<br>
+            ✅ 覆盖对子：${covered} / 28（${coverRate}%）<br>
             💡 8码里中2个正码即中奖（100%覆盖需11组）
         `;
     });
