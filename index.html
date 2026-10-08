@@ -799,8 +799,8 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
     let result = [];
     let used = new Set();
     // ★ 初始化对应调试对象
-    if (debugKey === 'num') window.debugNumResults = {};
-    if (debugKey === 'zodiac') window.debugZodiacResults = {};
+    if (debugKey === 'num') { window.debugNumResults = {}; window.debugNumPool = {}; }
+    if (debugKey === 'zodiac') { window.debugZodiacResults = {}; window.debugZodiacPool = {}; }
     
     // ★★★ 统一冷却期机制：刚开过1-2期的号（miss ≤ 2）统一标记
     const COOLING_MISS_THRESHOLD = 2;
@@ -876,11 +876,10 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
             }
         }
 
-        // 轮换窗口
+        // 轮换窗口，pool候选，maxCount配额，rotateFactor上一期期号
         let picks;
         if (pool.length > maxCount) {
-            let maxStart = pool.length - maxCount;
-            let start = rotateFactor % (maxStart + 1);
+            let start = rotateFactor % (pool.length - maxCount + 1);
             picks = pool.slice(start, start + maxCount);
         } else {
             picks = pool.slice(0, maxCount);
@@ -911,7 +910,15 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
                 }
             }
         }
-
+        // ★ 记录 pool（候选）
+        if (debugKey === 'num') {
+            if (!window.debugNumPool) window.debugNumPool = {};
+            window.debugNumPool[category] = pool.map(p => p.id);
+        }
+        if (debugKey === 'zodiac') {
+            if (!window.debugZodiacPool) window.debugZodiacPool = {};
+            window.debugZodiacPool[category] = pool.map(p => p.id);
+        }
         return picks;
     }
 
@@ -959,7 +966,7 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
                 }
             }
 
-            // 情况3：候选 > 配额，或 候选 = 配额且非 cold → 正常选
+            // 情况3：候选 > 配额， 正常选
             let picks = await selectFromCategory(cat, finalQuotas[cat]);
             picks.forEach(p => {
                 result.push(p);
@@ -1270,14 +1277,22 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
     if (debugMode) {
         let dn = window.debugNumResults || {};
         let dz = window.debugZodiacResults || {};
+        let dnp = window.debugNumPool || {};
+        let dzp = window.debugZodiacPool || {};
         debugHtml = `
         <br><br><small style="color:#999;font-size:11px;line-height:1.8;">
-        🔧 <b>号码</b> hot: ${(dn.hot || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> warm: ${(dn.warm || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> cold: ${(dn.cold || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> hot: ${(dz.hot || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> warm: ${(dz.warm || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> cold: ${(dz.cold || []).join(', ') || '无'}
+        🔧 <b>号码</b> hot 候选: ${(dnp.hot || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> hot 选中: ${(dn.hot || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> warm 选中: ${(dn.warm || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> cold 候选: ${(dnp.cold || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> cold 选中: ${(dn.cold || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> hot 候选: ${(dzp.hot || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> hot 选中: ${(dz.hot || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> warm 候选: ${(dzp.warm || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> warm 选中: ${(dz.warm || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> cold 候选: ${(dzp.cold || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> cold 选中: ${(dz.cold || []).join(', ') || '无'}
         </small>`;
     }
     
