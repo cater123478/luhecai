@@ -1503,7 +1503,9 @@ async function showTmHistory(){
         localStorage.setItem("hot15History", JSON.stringify(list));
         console.log("✅ 已自动修复历史数据格式");
     }
-    
+
+    // 静默补全缺失的开奖结果（不刷新页面，避免闪烁）
+    await silentUpdateMissingResults(list);
     let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
     list.forEach(i=>{
       html += `<div style="margin-bottom:10px;">${i.expect}期`;
@@ -1595,8 +1597,6 @@ async function showTmHistory(){
       html += `</div><hr>`;
     });
 
-    // 静默补全缺失的开奖结果（不刷新页面，避免闪烁）
-    silentUpdateMissingResults(list);
     html += `</div>`;
     box.innerHTML = html;
 }
@@ -1734,28 +1734,27 @@ async function init(){
     // ★ URL 参数 r=1 强制重算
     let urlParams = new URLSearchParams(location.search);
     let forceRecalc = urlParams.get('r') === '1';
-
     if (forceRecalc) {
         try {
-            // 先拉 kj.json，拿到最新开奖期号
-            let raw = await fetchData(true);
-            let latestQishu = (raw && raw.length > 0) ? Number(raw[0].qishu) : 0;
-            let currentPeriod = latestQishu + 1;  // 未开奖的分析期
+            // 先拉云端
+            let {data: list} = await getCloudData();
+
+            // 找到所有未开奖的记录（hit === ""）
+            let unopened = list.filter(r => r.hit === "");
+            if (unopened.length > 0) {
+                let unopenedExpects = new Set(unopened.map(r => r.expect));
+                // 只删未开奖的
+                list = list.filter(r => !unopenedExpects.has(r.expect));
+                await saveCloudData(list);
+                alert('已清空未开奖记录：' + [...unopenedExpects].join(','));
+            } else {
+                alert('没有未开奖记录，无需清理');
+            }
 
             // 清本地缓存
             localStorage.removeItem("cacheHistory");
             localStorage.removeItem("cacheHistoryTime");
-
-            if (currentPeriod > 0) {
-                let {data: list} = await getCloudData();
-                // ★ 只清"未开奖"的当前期，已开奖的记录不动
-                list = list.filter(r => !(r.expect === currentPeriod && r.hit === ""));
-                await saveCloudData(list);
-                sessionStorage.removeItem('luhecai_cloud_cache');
-                let tip = '✅ 已清空' + currentPeriod + '期未开奖记录，将重新计算';
-                console.log(tip);
-                alert(tip);
-            }
+            sessionStorage.removeItem('luhecai_cloud_cache');
         } catch(e) {
             console.log('清空失败:', e.message);
         }
