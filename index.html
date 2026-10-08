@@ -519,7 +519,7 @@ async function saveHot15History(hot15, latest, history, zodiacs=null) {
         nums: pureNums,
         zodiacNums: pureZodiacs,
         open: null,
-        hit: "",
+        hit: false,
         date: localDate,
         basedOnPeriod: basedOnPeriod
     };
@@ -1739,8 +1739,8 @@ async function init(){
             // 先拉云端
             let {data: list} = await getCloudData();
 
-            // 找到所有未开奖的记录（hit === ""）
-            let unopened = list.filter(r => r.hit === "");
+            // ★ 未开奖 = open === null
+            let unopened = list.filter(r => r.open === null || r.open === undefined);
             if (unopened.length > 0) {
                 let unopenedExpects = new Set(unopened.map(r => r.expect));
                 // 只删未开奖的
