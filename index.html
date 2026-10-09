@@ -1825,7 +1825,7 @@ async function init(){
         let {data: list, fromCache} = await getCloudData();  // 首次云端，10s内缓存
         
         // ★ 然后显示分析结果（这次会使用刚缓存的云端数据）
-        await showTmAnalysis();
+        await showTmAnalysis(forceRecalc);
         
         // ★ 根据实际数据来源显示提示
         showToast(fromCache ? `✅ 数据已加载` : `✅ 数据已更新`);
