@@ -940,6 +940,9 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
                         if (debugKey === 'num') window.debugNumResults[cat] = picks.map(p => p.id);
                         if (debugKey === 'zodiac') window.debugZodiacResults[cat] = picks.map(p => p.id);
                     } else {
+                        let catCandidates = statsData.filter(item => item.category === cat && !coolingIds.has(item.id) && !used.has(item.id)).map(item => item.id || item.num);
+                        if (debugKey === 'num') window.debugNumPool[cat] = catCandidates;
+                        if (debugKey === 'zodiac') window.debugZodiacPool[cat] = catCandidates;
                         let transferTo = cat === 'hot' ? 'warm' : (cat === 'warm' ? 'cold' : 'warm');
                         finalQuotas[transferTo] += finalQuotas[cat];
                         finalQuotas[cat] = 0;
@@ -1279,20 +1282,29 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         let dz = window.debugZodiacResults || {};
         let dnp = window.debugNumPool || {};
         let dzp = window.debugZodiacPool || {};
+
+        // 格式化：选中为空但候选有值 → "无 (可能转走)"
+        let fmt = (picked, pool) => {
+            let p = (picked || []).join(', ');
+            if (p) return p;
+            if ((pool || []).length > 0) return '无 (可能转走)';
+            return '无';
+        };
+
         debugHtml = `
         <br><br><small style="color:#999;font-size:11px;line-height:1.8;">
         🔧 <b>号码</b> hot 候选: ${(dnp.hot || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> hot 选中: ${(dn.hot || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> hot 选中: ${fmt(dn.hot, dnp.hot)}<br>
         🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> warm 选中: ${(dn.warm || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> warm 选中: ${fmt(dn.warm, dnp.warm)}<br>
         🔧 <b>号码</b> cold 候选: ${(dnp.cold || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> cold 选中: ${(dn.cold || []).join(', ') || '无'}<br>
+        🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br>
         🔧 <b>生肖</b> hot 候选: ${(dzp.hot || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> hot 选中: ${(dz.hot || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> hot 选中: ${fmt(dz.hot, dzp.hot)}<br>
         🔧 <b>生肖</b> warm 候选: ${(dzp.warm || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> warm 选中: ${(dz.warm || []).join(', ') || '无'}<br>
+        🔧 <b>生肖</b> warm 选中: ${fmt(dz.warm, dzp.warm)}<br>
         🔧 <b>生肖</b> cold 候选: ${(dzp.cold || []).join(', ') || '无'}<br>
-        🔧 <b>生肖</b> cold 选中: ${(dz.cold || []).join(', ') || '无'}
+        🔧 <b>生肖</b> cold 选中: ${fmt(dz.cold, dzp.cold)}
         </small>`;
     }
     
