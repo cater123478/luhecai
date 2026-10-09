@@ -1751,25 +1751,13 @@ async function init(){
     let forceRecalc = urlParams.get('r') === '1';
     if (forceRecalc) {
         try {
-            // 先拉云端
-            let {data: list} = await getCloudData();
-
-            // ★ 未开奖 = open === null
-            let unopened = list.filter(r => r.open === null || r.open === undefined);
-            if (unopened.length > 0) {
-                let unopenedExpects = new Set(unopened.map(r => r.expect));
-                // 只删未开奖的
-                list = list.filter(r => !unopenedExpects.has(r.expect));
-                await saveCloudData(list);
-                alert('已清空未开奖记录：' + [...unopenedExpects].join(','));
-            } else {
-                alert('没有未开奖记录，无需清理');
+            if (forceRecalc) {
+                localStorage.removeItem("cacheHistory");
+                localStorage.removeItem("cacheHistoryTime");
+                sessionStorage.removeItem('luhecai_cloud_cache');
+                console.log('✅ 已清本地缓存，将重新计算');
+                alert('✅ 已清本地缓存，将重新计算');
             }
-
-            // 清本地缓存
-            localStorage.removeItem("cacheHistory");
-            localStorage.removeItem("cacheHistoryTime");
-            sessionStorage.removeItem('luhecai_cloud_cache');
         } catch(e) {
             console.log('清空失败:', e.message);
         }
