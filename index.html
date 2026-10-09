@@ -135,6 +135,9 @@ const KJ_CACHE_EXPIRE = 30 * 60 * 1000; // 30分钟缓存开奖记录
 // ★ 评分公式权重参数（统一管理，方便调整）
 const SCORE_FREQ_WEIGHT = 5;      // 频次权重
 const SCORE_MISS_WEIGHT = 1.5;    // 遗漏权重
+// ★ 分类阈值（全局）
+const NUM_THRESHOLDS = { overheat: 0.08, hot: 0.06, warm: 0.03 };
+const ZODIAC_THRESHOLDS = { overheat: 0.14, hot: 0.10, warm: 0.06 };
 
 async function getCloudData(forceRefresh = false) {
     const now = Date.now();
@@ -1036,7 +1039,7 @@ async function getHotNumbers(history, count = 15, latestQishu = 0)  {
     );
 
     // ★ 步骤2：分类 + 回温检测
-    let thresholds = { overheat: 0.08, hot: 0.06, warm: 0.03 };  // 号码阈值：overheat:≥4次;hot:≥3次;warm:≥2次;cold:≤1次
+    let thresholds = NUM_THRESHOLDS;  // 号码阈值：overheat:≥4次;hot:≥3次;warm:≥2次;cold:≤1次
     stats.forEach(item => {
         item.category = categorizeByFreq(item, thresholds);
         item.isWarmingUp = checkWarmingUp(item, 3);
@@ -1087,7 +1090,7 @@ async function getHotZodiacs(history, count = 4, latestQishu = 0) {
     );
 
     // ★ 步骤2：分类 + 回温检测
-    let thresholds = { overheat: 0.14, hot: 0.10, warm: 0.06 };  // 生肖原阈值
+    let thresholds = ZODIAC_THRESHOLDS;  // 生肖原阈值
     stats.forEach(item => {
         item.category = categorizeByFreq(item, thresholds);
         item.isWarmingUp = checkWarmingUp(item, 3);
@@ -1292,7 +1295,8 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         };
 
         debugHtml = `
-        <br><br><small style="color:#999;font-size:11px;line-height:1.8;">
+        <br><small style="color:#999;font-size:11px;line-height:1.8;">
+        号码阈值：${JSON.stringify(NUM_THRESHOLDS)}<br>生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
         🔧 <b>号码</b> hot 候选: ${(dnp.hot || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> hot 选中: ${fmt(dn.hot, dnp.hot)}<br>
         🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
