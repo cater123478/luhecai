@@ -1296,13 +1296,14 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
 
         debugHtml = `
         <br><small style="color:#999;font-size:11px;line-height:1.8;">
-        号码阈值：${JSON.stringify(NUM_THRESHOLDS)}<br>生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
+        号码阈值：${JSON.stringify(NUM_THRESHOLDS)}<br>
         🔧 <b>号码</b> hot 候选: ${(dnp.hot || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> hot 选中: ${fmt(dn.hot, dnp.hot)}<br>
         🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> warm 选中: ${fmt(dn.warm, dnp.warm)}<br>
         🔧 <b>号码</b> cold 候选: ${(dnp.cold || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br>
+        生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
         🔧 <b>生肖</b> hot 候选: ${(dzp.hot || []).join(', ') || '无'}<br>
         🔧 <b>生肖</b> hot 选中: ${fmt(dz.hot, dzp.hot)}<br>
         🔧 <b>生肖</b> warm 候选: ${(dzp.warm || []).join(', ') || '无'}<br>
