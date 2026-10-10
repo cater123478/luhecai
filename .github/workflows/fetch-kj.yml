@@ -1,7 +1,7 @@
 name: Fetch KJ
 on:
   schedule:
-    - cron: '45 3,9,14,15,17,21,22 * * *'
+    - cron: '45 3,9,21,22 * * *'
   workflow_dispatch:
 
 jobs:
