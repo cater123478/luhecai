@@ -1232,12 +1232,12 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
     // ★ 分层格式化号码显示（方案B：组首标图标）
     let shownLevels = new Set();  // 记录已显示图标的层级
     let numsHtml = nums.map((item, index) => {
-        let num = item.num || item;  // 兼容旧格式
+        let num = item.num || item;
         let level = item.level || 'normal';
         let score = item.score ?? '?';
         let category = item.category || '';
-        
-        // ★ 只在该层级的第一个元素前加图标
+        let zodiac = getZodiac(num);
+
         let prefix = '';
         if (!shownLevels.has(level)) {
             if (level === 'core') prefix = '🔥';
@@ -1245,15 +1245,17 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
             else if (level === 'cold') prefix = '💎';
             shownLevels.add(level);
         }
-        
-        // PC端title悬停 + 手机端点击显示（精简版：只显示评分和分类）
+
         let title = `号码${num}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
         let freq = item.freq ?? 0;
         let miss = item.miss ?? 0;
         let consec = item.consecutiveMiss ?? 0;
-        let zodiac = getZodiac(num);
-        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
-    }).join(' ');
+
+        return `<span style="display:inline-block;width:40px;text-align:center;vertical-align:top;margin-bottom:6px;cursor:pointer;" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">
+            <span style="display:block;font-size:13px;line-height:1.2;">${prefix}${num}</span>
+            <span style="display:block;font-size:10px;color:#999;line-height:1.2;">${prefix ? '<span style="visibility:hidden;">🔥</span>' : ''}${zodiac}</span>
+        </span>`;
+    }).join('');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
     let shownZodiacLevels = new Set();
@@ -1302,7 +1304,7 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> warm 选中: ${fmt(dn.warm, dnp.warm)}<br>
         🔧 <b>号码</b> cold 候选: ${(dnp.cold || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br>
+        🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br><br>
         生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
         🔧 <b>生肖</b> hot 候选: ${(dzp.hot || []).join(', ') || '无'}<br>
         🔧 <b>生肖</b> hot 选中: ${fmt(dz.hot, dzp.hot)}<br>
