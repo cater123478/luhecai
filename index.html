@@ -1226,9 +1226,8 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
             }
         }
     }
-    // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理
-    // renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
-
+    // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理，renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
+    let debugMode = new URLSearchParams(location.search).get('debug') === '1';
     // ★ 分层格式化号码显示（方案B：组首标图标）
     let shownLevels = new Set();  // 记录已显示图标的层级
     let numsHtml = nums.map((item, index) => {
@@ -1250,12 +1249,15 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         let freq = item.freq ?? 0;
         let miss = item.miss ?? 0;
         let consec = item.consecutiveMiss ?? 0;
-
-        return `<span style="display:inline-block;width:40px;text-align:center;vertical-align:top;margin-bottom:6px;cursor:pointer;" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">
+        // ★ debug 模式：号码下方显示生肖
+        if (debugMode) {
+          return `<span style="display:inline-block;width:40px;text-align:center;vertical-align:top;margin-bottom:6px;cursor:pointer;" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">
             <span style="display:block;font-size:13px;line-height:1.2;">${prefix}${num}</span>
             <span style="display:block;font-size:10px;color:#999;line-height:1.2;">${prefix ? '<span style="visibility:hidden;">🔥</span>' : ''}${zodiac}</span>
         </span>`;
-    }).join('');
+        }
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', '${zodiac}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
+    }).join(' ');
     
     // ★ 分层格式化生肖显示（方案B：组首标图标）
     let shownZodiacLevels = new Set();
@@ -1280,7 +1282,6 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zFreqRate}, ${zMiss}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
     }).join(' ');
 
-    let debugMode = new URLSearchParams(location.search).get('debug') === '1';
     let debugHtml = '';
     if (debugMode) {
         let dn = window.debugNumResults || {};
