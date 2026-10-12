@@ -138,6 +138,8 @@ const SCORE_MISS_WEIGHT = 1.5;    // 遗漏权重
 // ★ 分类阈值（全局）
 const NUM_THRESHOLDS = { overheat: 0.08, hot: 0.06, warm: 0.03 };
 const ZODIAC_THRESHOLDS = { overheat: 0.14, hot: 0.10, warm: 0.06 };
+// 统一冷却期机制：距当前分析期 ≤ 2 期的号冷却
+const COOLING_THRESHOLD = 2;
 
 async function getCloudData(forceRefresh = false) {
     const now = Date.now();
@@ -692,8 +694,10 @@ function calculateStats(history, extractor, allItems, rawData = null) {
  */
 function categorizeByFreq(item, thresholds = {}) {
     let { overheat = 0.14, hot = 0.10, warm = 0.06 } = thresholds;
-
-    if (item.freqRate >= overheat) return 'overheat';
+    if (item.freqRate >= overheat) {
+        // ★ 过热号：冷了（miss > 5）降为 hot，给机会
+        return item.miss > 10 ? 'hot' : 'overheat';
+    }
     if (item.freqRate >= hot) return 'hot';
     if (item.freqRate >= warm) return 'warm';
     return 'cold';
@@ -806,9 +810,7 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
     if (debugKey === 'zodiac') { window.debugZodiacResults = {}; window.debugZodiacPool = {}; }
     
     // ★★★ 统一冷却期机制：刚开过1-2期的号（miss ≤ 2）统一标记
-    const COOLING_MISS_THRESHOLD = 2;
-    let coolingIds = new Set(statsData.filter(item => item.miss <= COOLING_MISS_THRESHOLD).map(item => item.id));
-    
+    let coolingIds = new Set(statsData.filter(item => (item.periodsSinceLast + 1) <= COOLING_THRESHOLD).map(item => item.id));
     // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
     // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
     // let dataVersionPeriod = 0;
@@ -846,30 +848,32 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
         });
 
         // ★★★ 按 freq 分组，按比例分配 pool 名额
-        let poolSize = Math.max(maxCount * 3, maxCount);
-        let groups = {};
-        candidates.forEach(c => {
-            let key = c.freq;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(c);
-        });
-
-        let groupKeys = Object.keys(groups).sort((a, b) => b - a);
-        let pool = [];
-        let remaining = poolSize;
-
-        groupKeys.forEach((key, idx) => {
-            let groupSize = groups[key].length;
-            let quota;
-            if (idx === groupKeys.length - 1) {
-                quota = remaining;
-            } else {
-                quota = Math.round(poolSize * groupSize / candidates.length);
-            }
-            quota = Math.min(quota, groupSize, remaining);
-            pool.push(...groups[key].slice(0, quota));
-            remaining -= quota;
-        });
+        // let poolSize = Math.max(maxCount * 3, maxCount);
+        // let groups = {};
+        // candidates.forEach(c => {
+        //     let key = c.freq;
+        //     if (!groups[key]) groups[key] = [];
+        //     groups[key].push(c);
+        // });
+        //
+        // let groupKeys = Object.keys(groups).sort((a, b) => b - a);
+        // let pool = [];
+        // let remaining = poolSize;
+        //
+        // groupKeys.forEach((key, idx) => {
+        //     let groupSize = groups[key].length;
+        //     let quota;
+        //     if (idx === groupKeys.length - 1) {
+        //         quota = remaining;
+        //     } else {
+        //         quota = Math.round(poolSize * groupSize / candidates.length);
+        //     }
+        //     quota = Math.min(quota, groupSize, remaining);
+        //     pool.push(...groups[key].slice(0, quota));
+        //     remaining -= quota;
+        // });
+        // ★★★ 全部候选进 pool（不再按比例丢弃）
+        let pool = [...candidates];
 
         // ★★★ 按 shuffle 参数决定是否洗牌
         if (shuffle) {
@@ -882,7 +886,10 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
         // 轮换窗口，pool候选，maxCount配额，rotateFactor上一期期号
         let picks;
         if (pool.length > maxCount) {
-            let start = rotateFactor % (pool.length - maxCount + 1);
+            let maxStart = pool.length - maxCount;
+            // ★ 号码步长3，生肖步长1
+            let step = (debugKey === 'num') ? 3 : 1;
+            let start = (rotateFactor * step) % (maxStart + 1);
             picks = pool.slice(start, start + maxCount);
         } else {
             picks = pool.slice(0, maxCount);
@@ -1300,13 +1307,13 @@ async function renderTm(result, currentPeriod, precomputedData=null) {
         debugHtml = `
         <br><small style="color:#999;font-size:11px;line-height:1.8;">
         号码阈值：${JSON.stringify(NUM_THRESHOLDS)}<br>
+        生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
         🔧 <b>号码</b> hot 候选: ${(dnp.hot || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> hot 选中: ${fmt(dn.hot, dnp.hot)}<br>
         🔧 <b>号码</b> warm 候选: ${(dnp.warm || []).join(', ') || '无'}<br>
         🔧 <b>号码</b> warm 选中: ${fmt(dn.warm, dnp.warm)}<br>
         🔧 <b>号码</b> cold 候选: ${(dnp.cold || []).join(', ') || '无'}<br>
-        🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br><br>
-        生肖阈值：${JSON.stringify(ZODIAC_THRESHOLDS)}<br>
+        🔧 <b>号码</b> cold 选中: ${fmt(dn.cold, dnp.cold)}<br>
         🔧 <b>生肖</b> hot 候选: ${(dzp.hot || []).join(', ') || '无'}<br>
         🔧 <b>生肖</b> hot 选中: ${fmt(dz.hot, dzp.hot)}<br>
         🔧 <b>生肖</b> warm 候选: ${(dzp.warm || []).join(', ') || '无'}<br>
