@@ -992,7 +992,7 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
 
     // ★ 如果还不够，从剩余候选中补满（排除冷却期的号）
     if (result.length < count) {
-        let remaining = statsData.filter(item => !used.has(item.id) && !coolingIds.has(item.id));
+        let remaining = statsData.filter(item => !used.has(item.id) && !coolingIds.has(item.id) && item.category !== 'overheat');
         remaining.sort((a, b) => {
             if (scoreFn) return scoreFn(b) - scoreFn(a);
             let scoreA = a.freq * SCORE_FREQ_WEIGHT + Math.sqrt(a.miss) * SCORE_MISS_WEIGHT;
