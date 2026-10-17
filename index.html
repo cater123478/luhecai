@@ -848,32 +848,32 @@ async function unifiedSelect(statsData, config = {}, rotateFactor = 0) {
         });
 
         // ★★★ 按 freq 分组，按比例分配 pool 名额
-        // let poolSize = Math.max(maxCount * 3, maxCount);
-        // let groups = {};
-        // candidates.forEach(c => {
-        //     let key = c.freq;
-        //     if (!groups[key]) groups[key] = [];
-        //     groups[key].push(c);
-        // });
-        //
-        // let groupKeys = Object.keys(groups).sort((a, b) => b - a);
-        // let pool = [];
-        // let remaining = poolSize;
-        //
-        // groupKeys.forEach((key, idx) => {
-        //     let groupSize = groups[key].length;
-        //     let quota;
-        //     if (idx === groupKeys.length - 1) {
-        //         quota = remaining;
-        //     } else {
-        //         quota = Math.round(poolSize * groupSize / candidates.length);
-        //     }
-        //     quota = Math.min(quota, groupSize, remaining);
-        //     pool.push(...groups[key].slice(0, quota));
-        //     remaining -= quota;
-        // });
+        let poolSize = Math.max(maxCount * 3, maxCount);
+        let groups = {};
+        candidates.forEach(c => {
+            let key = c.freq;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(c);
+        });
+
+        let groupKeys = Object.keys(groups).sort((a, b) => b - a);
+        let pool = [];
+        let remaining = poolSize;
+
+        groupKeys.forEach((key, idx) => {
+            let groupSize = groups[key].length;
+            let quota;
+            if (idx === groupKeys.length - 1) {
+                quota = remaining;
+            } else {
+                quota = Math.round(poolSize * groupSize / candidates.length);
+            }
+            quota = Math.min(quota, groupSize, remaining);
+            pool.push(...groups[key].slice(0, quota));
+            remaining -= quota;
+        });
         // ★★★ 全部候选进 pool（不再按比例丢弃）
-        let pool = [...candidates];
+        // let pool = [...candidates];
 
         // ★★★ 按 shuffle 参数决定是否洗牌
         if (shuffle) {
