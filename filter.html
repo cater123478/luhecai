@@ -21,12 +21,54 @@
     .cb-label input { display: none; }
     .cb-label.checked { background: #0f172a; color: #fff; border-color: #0f172a; }
 
-    .input-area { display: flex; gap: 10px; margin-top: 10px; }
-    .input-area input {
-        flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 14px; outline: none;
+    .group-title {
+        font-size: 0.78rem; color: #94a3b8; margin: 6px 0 6px; font-weight: 600;
+        display: flex; align-items: center; gap: 6px;
     }
-    .input-area button {
-        padding: 10px 20px; border-radius: 8px; border: none; background: #4a148c; color: #fff; font-size: 14px; cursor: pointer;
+    .help-btn {
+        width: 18px; height: 18px; border-radius: 50%;
+        border: 1px solid #cbd5e1; background: #fff; color: #64748b;
+        font-size: 12px; line-height: 1; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 0; transition: all 0.15s; flex-shrink: 0;
+    }
+    .help-btn:hover { background: #7b1fa2; border-color: #7b1fa2; color: #fff; }
+
+    .popup-mask {
+        position: fixed; inset: 0; background: rgba(15,23,42,0.45);
+        z-index: 99998; display: none; align-items: center; justify-content: center;
+        padding: 20px;
+    }
+    .popup-mask.show { display: flex; }
+    .popup-box {
+        background: #fff; border-radius: 16px; max-width: 520px; width: 100%;
+        max-height: 80vh; overflow-y: auto; padding: 18px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .popup-head {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 12px; font-weight: 700; font-size: 1rem;
+    }
+    .popup-close {
+        width: 28px; height: 28px; border-radius: 50%; border: none;
+        background: #f1f4f9; color: #475569; font-size: 18px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .popup-close:hover { background: #e2e8f0; }
+    .help-row {
+        display: flex; gap: 8px; padding: 7px 0;
+        border-bottom: 1px dashed #eef2f7; font-size: 13px; line-height: 1.6;
+    }
+    .help-row:last-child { border-bottom: none; }
+    .help-tag {
+        flex-shrink: 0; font-weight: 600; color: #4a148c;
+        min-width: 54px;
+    }
+    .help-val { color: #334155; word-break: break-all; }
+    .help-val .num-chip {
+        display: inline-block; margin: 1px 2px; padding: 1px 6px;
+        border-radius: 6px; background: #f1f4f9; font-size: 12px;
+        font-family: 'Courier New', monospace; color: #0f172a;
     }
 
     .result-area { margin-top: 14px; padding: 12px; background: #f8fafc; border-radius: 12px; font-size: 14px; line-height: 1.8; display: none; }
@@ -34,28 +76,121 @@
 
     .num-detail { font-family: 'Courier New', monospace; font-size: 14px; }
 
-    .back-btn { position: fixed; top: 10px; right: 10px; z-index: 99999; background: #fff; color: #333; padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .detail-toggle {
+        display: inline-flex; align-items: center; gap: 4px;
+        margin-top: 10px; padding: 6px 12px;
+        border-radius: 20px; border: 1px solid #e2e8f0;
+        background: #fff; color: #475569; font-size: 13px;
+        cursor: pointer; transition: all 0.15s;
+    }
+    .detail-toggle:hover { background: #f1f4f9; border-color: #cbd5e1; }
+    .detail-panel {
+        display: none; margin-top: 10px; padding: 10px 12px;
+        background: #fff; border: 1px solid #e9edf2; border-radius: 10px;
+        font-size: 13px; line-height: 1.7;
+    }
+    .detail-panel.show { display: block; }
+    .detail-panel .help-row { font-size: 12.5px; }
+
+    /* ===== 输入框美化 ===== */
+    .num-input-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #f8fafc;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 8px 10px 8px 14px;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .num-input-row:focus-within {
+        border-color: #7b1fa2;
+        background: #fff;
+        box-shadow: 0 0 0 4px rgba(123, 31, 162, 0.12);
+    }
+    .num-input-prefix {
+        font-size: 16px;
+        opacity: 0.5;
+        flex-shrink: 0;
+        user-select: none;
+    }
+    .num-input-box {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 15px;
+        color: #0f172a;
+        outline: none;
+        padding: 4px 0;
+        min-width: 0;
+    }
+    .num-input-box::placeholder { color: #94a3b8; }
+    .del-btn {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: #fee2e2;
+        color: #dc2626;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, transform 0.15s;
+    }
+    .del-btn:hover { background: #fecaca; transform: scale(1.08); }
+
+    #numInputsContainer { display: flex; flex-direction: column; gap: 10px; }
+
+    /* 解析结果卡片 */
+    .parse-result { margin-top: 12px; }
+    .parse-table {
+        width: 100%; border-collapse: collapse; font-size: 13px;
+        background: #fff; border-radius: 10px; overflow: hidden;
+        border: 1px solid #e9edf2;
+    }
+    .parse-table th {
+        background: #f1f4f9; color: #475569; font-weight: 600;
+        padding: 8px 6px; text-align: center; font-size: 12px;
+    }
+    .parse-table td {
+        padding: 7px 6px; text-align: center;
+        border-top: 1px solid #eef2f7;
+        font-family: 'Courier New', monospace;
+    }
+    .parse-table tr:hover td { background: #fafbfd; }
+    .parse-chip {
+        display: inline-block; padding: 1px 8px; border-radius: 6px;
+        font-weight: 700; color: #fff; min-width: 28px;
+    }
+    .bose-badge {
+        display: inline-block; padding: 1px 8px; border-radius: 10px;
+        font-size: 12px; color: #fff; font-weight: 500;
+    }
 </style>
 </head>
 <body>
-<!-- 放在 <body> 下面第一行 -->
-<div style="position:fixed;top:18px;left:10px;z-index:99999;background:#9c27b0;color:#fff;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
+<div style="position:fixed;top:42px;left:10px;z-index:99999;background:#9c27b0;color:#fff;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
 <div class="container">
     <h1>🔍 分类交集筛选</h1>
 
     <div class="card">
         <div class="card-title">📌 选择分类标签</div>
-        <div class="checkbox-group" id="tagGroup"></div>
+        <div id="tagGroup"></div>
     </div>
 
     <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <div class="card-title" style="margin: 0;">🔢 输入指定号码（可选，取交集）</div>
-            <button onclick="addNumInput()" style="width: 28px; height: 28px; border-radius: 50%; border: none; background: #4a148c; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+            <button onclick="addNumInput()" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#7b1fa2,#4a148c); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(123,31,162,0.35);">+</button>
         </div>
-        <div id="numInputsContainer" style="display: flex; flex-direction: column; gap: 8px;">
-            <!-- 默认生成一个输入框 -->
-            <input type="text" class="num-input-box" placeholder="第一组号码，如：🔥17 23 2 10 19">
+        <div id="numInputsContainer">
+            <div class="num-input-row">
+                <span class="num-input-prefix">#</span>
+                <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19">
+            </div>
         </div>
     </div>
 
@@ -63,13 +198,34 @@
         <button class="btn" onclick="runFilter()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(45deg,#4caf50,#2ecc71); color: #fff; font-size: 16px; cursor: pointer;">确认分析</button>
         <button class="btn" onclick="clearAll()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: #f5f5f5; color: #333; font-size: 16px; cursor: pointer;">清空</button>
     </div>
-
     <div id="result" class="result-area"></div>
+
+            <!-- ★ 新增：单独号码解析 -->
+    <div class="card">
+        <div class="card-title">🧩 号码属性解析（输入任意符号分隔）</div>
+        <div class="num-input-row">
+            <span class="num-input-prefix">🔎</span>
+            <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5、7-9 11+13 或 01.02/03">
+        </div>
+        <button onclick="parseNums()" style="width:100%; margin-top:10px; padding:10px; border-radius:12px; border:none; background:linear-gradient(45deg,#3b82f6,#60a5fa); color:#fff; font-size:14px; cursor:pointer;">解析号码属性</button>
+        <div id="parseResult" class="parse-result"></div>
+    </div>
+</div>
+
+<!-- 速查弹层 -->
+<div class="popup-mask" id="helpMask" onclick="if(event.target===this)closeHelp()">
+    <div class="popup-box">
+        <div class="popup-head">
+            <span id="helpTitle">分类速查</span>
+            <button class="popup-close" onclick="closeHelp()">×</button>
+        </div>
+        <div id="helpBody"></div>
+    </div>
 </div>
 
 <script>
 // ==================== 数据字典 ====================
-CATEGORIES = {
+const CATEGORIES = {
     "吃肉": ["虎", "蛇", "龙", "狗"],
     "吃菜": ["猪", "鼠", "鸡", "猴"],
     "吃草": ["牛", "羊", "马", "兔"],
@@ -84,7 +240,7 @@ CATEGORIES = {
     "后肖": ["猪", "狗", "鸡", "猴", "羊", "马"],
     "野兽": ["猴", "蛇", "龙", "兔", "虎", "鼠"],
     "家禽": ["羊", "马", "牛", "猪", "狗", "鸡"]
-}
+};
 
 const ZODIAC_NUMS = {
     "马": [1, 13, 25, 37, 49], "蛇": [2, 14, 26, 38], "龙": [3, 15, 27, 39], "兔": [4, 16, 28, 40],
@@ -106,104 +262,165 @@ const BOSE = {
     "绿": [5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]
 };
 
-// 反向映射
-const NUM_TO_ZODIAC = {};
-for (let z in ZODIAC_NUMS) {
-    ZODIAC_NUMS[z].forEach(n => NUM_TO_ZODIAC[n] = z);
-}
-const NUM_TO_WUXING = {};
-for (let w in WUXING) {
-    WUXING[w].forEach(n => NUM_TO_WUXING[n] = w);
-}
-const NUM_TO_BOSE = {};
-for (let b in BOSE) {
-    BOSE[b].forEach(n => NUM_TO_BOSE[n] = b);
-}
+const BOSE_CATEGORIES = { "红波": BOSE["红"], "绿波": BOSE["绿"], "蓝波": BOSE["蓝"] };
+const WUXING_CATEGORIES = { "金": WUXING["金"], "木": WUXING["木"], "水": WUXING["水"], "火": WUXING["火"], "土": WUXING["土"] };
 
-// 颜色辅助
+const NUM_TO_ZODIAC = {};
+for (let z in ZODIAC_NUMS) ZODIAC_NUMS[z].forEach(n => NUM_TO_ZODIAC[n] = z);
+const NUM_TO_WUXING = {};
+for (let w in WUXING) WUXING[w].forEach(n => NUM_TO_WUXING[n] = w);
+const NUM_TO_BOSE = {};
+for (let b in BOSE) BOSE[b].forEach(n => NUM_TO_BOSE[n] = b);
+
 function getColor(n) {
     if (BOSE["红"].includes(n)) return '#e74c3c';
     if (BOSE["蓝"].includes(n)) return '#0d93ea';
     if (BOSE["绿"].includes(n)) return '#2ecc71';
     return '#333';
 }
+function getBoseName(n) {
+    if (BOSE["红"].includes(n)) return '红波';
+    if (BOSE["蓝"].includes(n)) return '蓝波';
+    if (BOSE["绿"].includes(n)) return '绿波';
+    return '?';
+}
+
+// ==================== 速查弹层 ====================
+function openHelp(type) {
+    let title = '', rowsHtml = '';
+    if (type === 'zodiac') {
+        title = '生肖分类速查';
+        for (let tag in CATEGORIES) {
+            rowsHtml += `<div class="help-row"><span class="help-tag">${tag}</span><span class="help-val">${CATEGORIES[tag].join(' ')}</span></div>`;
+        }
+    } else if (type === 'bose') {
+        title = '波色分类速查';
+        for (let tag in BOSE_CATEGORIES) {
+            let nums = BOSE_CATEGORIES[tag].map(n => `<span class="num-chip" style="color:${getColor(n)}">${n.toString().padStart(2,'0')}</span>`).join('');
+            rowsHtml += `<div class="help-row"><span class="help-tag">${tag}</span><span class="help-val">${nums}</span></div>`;
+        }
+    } else if (type === 'wuxing') {
+        title = '五行分类速查';
+        for (let tag in WUXING_CATEGORIES) {
+            let nums = WUXING_CATEGORIES[tag].map(n => `<span class="num-chip">${n.toString().padStart(2,'0')}</span>`).join('');
+            rowsHtml += `<div class="help-row"><span class="help-tag">${tag}</span><span class="help-val">${nums}</span></div>`;
+        }
+    }
+    document.getElementById('helpTitle').textContent = title;
+    document.getElementById('helpBody').innerHTML = rowsHtml;
+    document.getElementById('helpMask').classList.add('show');
+}
+function closeHelp() { document.getElementById('helpMask').classList.remove('show'); }
 
 // ==================== UI 渲染 ====================
 const tagGroup = document.getElementById('tagGroup');
 let selectedTags = new Set();
 
+function makeGroupTitle(text, helpType) {
+    let t = document.createElement('div');
+    t.className = 'group-title';
+    t.innerHTML = `<span>${text}</span>
+        <button class="help-btn" title="查看${text}对应关系" onclick="openHelp('${helpType}')">?</button>`;
+    return t;
+}
+
 function renderTags() {
     tagGroup.innerHTML = '';
-    for (let tag in CATEGORIES) {
-        let label = document.createElement('label');
-        label.className = 'cb-label' + (selectedTags.has(tag) ? ' checked' : '');
+    tagGroup.appendChild(makeGroupTitle('生肖分类', 'zodiac'));
+    let zodiacRow = document.createElement('div');
+    zodiacRow.className = 'checkbox-group';
+    tagGroup.appendChild(zodiacRow);
+    for (let tag in CATEGORIES) zodiacRow.appendChild(createTagLabel(tag, tag));
 
-        let cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = tag;
-        cb.checked = selectedTags.has(tag);
+    tagGroup.appendChild(makeGroupTitle('波色分类（多选取并集）', 'bose'));
+    let boseRow = document.createElement('div');
+    boseRow.className = 'checkbox-group';
+    tagGroup.appendChild(boseRow);
+    for (let tag in BOSE_CATEGORIES) boseRow.appendChild(createTagLabel(tag, tag));
 
-        cb.addEventListener('change', function() {
-            if (this.checked) {
-                selectedTags.add(tag);
-                label.classList.add('checked');
-            } else {
-                selectedTags.delete(tag);
-                label.classList.remove('checked');
-            }
-        });
-
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(tag));
-        tagGroup.appendChild(label);
-    }
-}
-// 添加新输入框
-function addNumInput() {
-    let container = document.getElementById('numInputsContainer');
-    let count = container.querySelectorAll('.num-input-box').length + 1;
-
-    let wrapper = document.createElement('div');
-    wrapper.style.display = 'flex';
-    wrapper.style.gap = '8px';
-
-    let input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'num-input-box';
-    input.placeholder = `第${count}组号码`;
-    input.style.flex = '1';
-
-    let delBtn = document.createElement('button');
-    delBtn.innerHTML = '×';
-    delBtn.style.cssText = 'width: 36px; border-radius: 8px; border: none; background: #ffebee; color: #c62828; font-size: 18px; cursor: pointer;';
-    delBtn.onclick = function() {
-        wrapper.remove();
-        updatePlaceholders();
-    };
-
-    wrapper.appendChild(input);
-    wrapper.appendChild(delBtn);
-    container.appendChild(wrapper);
+    tagGroup.appendChild(makeGroupTitle('五行分类（多选取并集）', 'wuxing'));
+    let wuxingRow = document.createElement('div');
+    wuxingRow.className = 'checkbox-group';
+    tagGroup.appendChild(wuxingRow);
+    for (let tag in WUXING_CATEGORIES) wuxingRow.appendChild(createTagLabel(tag, tag));
 }
 
-// 删除后重新排列 placeholder 数字
-function updatePlaceholders() {
-    let container = document.getElementById('numInputsContainer');
-    let inputs = container.querySelectorAll('.num-input-box');
-    inputs.forEach((input, index) => {
-        input.placeholder = `第${index + 1}组号码`;
+function createTagLabel(value, text) {
+    let label = document.createElement('label');
+    label.className = 'cb-label' + (selectedTags.has(value) ? ' checked' : '');
+    let cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = value;
+    cb.checked = selectedTags.has(value);
+    cb.addEventListener('change', function() {
+        if (this.checked) { selectedTags.add(value); label.classList.add('checked'); }
+        else { selectedTags.delete(value); label.classList.remove('checked'); }
     });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(text));
+    return label;
 }
+
+// ==================== ★ 号码解析 ====================
+function parseNums() {
+    let raw = document.getElementById('parseInput').value.trim();
+    let out = document.getElementById('parseResult');
+
+    if (!raw) {
+        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入号码</div>`;
+        return;
+    }
+
+    // 提取所有 1-49 的数字（支持任意符号分隔，包括 - 区间、. / 、 + 等）
+    let matched = raw.match(/\d{1,2}/g) || [];
+    let nums = [];
+    matched.forEach(m => {
+        let n = parseInt(m);
+        if (n >= 1 && n <= 49 && !nums.includes(n)) nums.push(n);
+    });
+
+    if (nums.length === 0) {
+        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效号码（1-49）</div>`;
+        return;
+    }
+
+    nums.sort((a, b) => a - b);
+
+    let rows = nums.map(n => {
+        let z = NUM_TO_ZODIAC[n] || '?';
+        let w = NUM_TO_WUXING[n] || '?';
+        let color = getColor(n);
+        let boseName = getBoseName(n);
+        return `<tr>
+            <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
+            <td>${z}</td>
+            <td>${w}</td>
+            <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
+        </tr>`;
+    }).join('');
+
+    out.innerHTML = `
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共识别 ${nums.length} 个号码</div>
+        <table class="parse-table">
+            <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
 // ==================== 核心逻辑 ====================
 function runFilter() {
     let resultDiv = document.getElementById('result');
     let tags = Array.from(selectedTags);
 
-    // ================= 第3点：提取所有动态输入框的号码并求交集 =================
-    let inputSets = [];
-    let inputElements = document.querySelectorAll('.num-input-box');
+    let zodiacTags = tags.filter(t => CATEGORIES[t] !== undefined);
+    let boseTags = tags.filter(t => BOSE_CATEGORIES[t] !== undefined);
+    let wuxingTags = tags.filter(t => WUXING_CATEGORIES[t] !== undefined);
 
-    inputElements.forEach(el => {
+    let inputSets = [];
+    document.querySelectorAll('.num-input-box').forEach(el => {
+        // 跳过解析输入框
+        if (el.id === 'parseInput') return;
         let val = el.value.trim();
         if (val) {
             let nums = new Set();
@@ -218,68 +435,70 @@ function runFilter() {
         }
     });
 
-    // 多组号码求交集
     let inputNumsIntersect = null;
     for (let set of inputSets) {
-        if (inputNumsIntersect === null) {
-            inputNumsIntersect = set;
-        } else {
-            inputNumsIntersect = new Set([...inputNumsIntersect].filter(n => set.has(n)));
-        }
+        if (inputNumsIntersect === null) inputNumsIntersect = set;
+        else inputNumsIntersect = new Set([...inputNumsIntersect].filter(n => set.has(n)));
     }
 
-    // 如果输入了多组号码，但完全没有交集，直接报错返回
     if (inputSets.length > 0 && (!inputNumsIntersect || inputNumsIntersect.size === 0)) {
         resultDiv.innerHTML = "❌ 输入的多组号码之间无交集！";
         resultDiv.classList.add('show');
         return;
     }
 
-    // 标签和号码都没填的情况
     if (tags.length === 0 && inputSets.length === 0) {
         resultDiv.innerHTML = "⚠️ 请至少选择一个分类标签或输入号码。";
         resultDiv.classList.add('show');
         return;
     }
 
-    // 1. 求标签的生肖交集
-    let tagAnimals = null;
-    for (let tag of tags) {
-        if (tagAnimals === null) {
-            tagAnimals = new Set(CATEGORIES[tag]);
-        } else {
-            tagAnimals = new Set([...tagAnimals].filter(a => CATEGORIES[tag].includes(a)));
-        }
-    }
+    let pools = [];
+    let conditionDetails = [];
 
-    // 2. 提取分类对应的号码池
-    let tagNumsSet = null;
-    if (tagAnimals !== null) {
+    if (zodiacTags.length > 0) {
+        let tagAnimals = null;
+        for (let tag of zodiacTags) {
+            if (tagAnimals === null) tagAnimals = new Set(CATEGORIES[tag]);
+            else tagAnimals = new Set([...tagAnimals].filter(a => CATEGORIES[tag].includes(a)));
+        }
         if (tagAnimals.size === 0) {
-            resultDiv.innerHTML = `❌ 所选分类条件无交集！`;
+            resultDiv.innerHTML = "❌ 所选生肖分类条件无交集！";
             resultDiv.classList.add('show');
             return;
         }
-        tagNumsSet = new Set();
-        for (let a of tagAnimals) {
-            ZODIAC_NUMS[a].forEach(n => tagNumsSet.add(n));
-        }
+        let s = new Set();
+        for (let a of tagAnimals) ZODIAC_NUMS[a].forEach(n => s.add(n));
+        pools.push(s);
+        zodiacTags.forEach(tag => conditionDetails.push({ label: tag, value: CATEGORIES[tag].join(' ') }));
+        conditionDetails.push({ label: '生肖交集', value: [...tagAnimals].join(' '), highlight: true });
     }
 
-    // ================= 第4点：计算最终号码并输出结果 =================
-    let finalNums;
-    // 情况A：既有分类标签，又输入了号码组
-    if (tagNumsSet !== null && inputNumsIntersect && inputNumsIntersect.size > 0) {
-        finalNums = [...tagNumsSet].filter(n => inputNumsIntersect.has(n)).sort((a,b)=>a-b);
+    if (boseTags.length > 0) {
+        let s = new Set();
+        for (let t of boseTags) BOSE_CATEGORIES[t].forEach(n => s.add(n));
+        pools.push(s);
+        boseTags.forEach(tag => conditionDetails.push({ label: tag, value: BOSE_CATEGORIES[tag].map(n => n.toString().padStart(2,'0')).join(' ') }));
     }
-    // 情况B：只有分类标签
-    else if (tagNumsSet !== null) {
-        finalNums = [...tagNumsSet].sort((a,b)=>a-b);
+
+    if (wuxingTags.length > 0) {
+        let s = new Set();
+        for (let t of wuxingTags) WUXING_CATEGORIES[t].forEach(n => s.add(n));
+        pools.push(s);
+        wuxingTags.forEach(tag => conditionDetails.push({ label: tag, value: WUXING_CATEGORIES[tag].map(n => n.toString().padStart(2,'0')).join(' ') }));
     }
-    // 情况C：只输入了号码组，没有勾选分类
-    else {
-        finalNums = [...inputNumsIntersect].sort((a,b)=>a-b);
+
+    if (inputNumsIntersect && inputNumsIntersect.size > 0) {
+        pools.push(inputNumsIntersect);
+        conditionDetails.push({ label: '输入号码交集', value: [...inputNumsIntersect].sort((a,b)=>a-b).map(n => n.toString().padStart(2,'0')).join(' ') });
     }
+
+    let merged = [...pools[0]];
+    for (let i = 1; i < pools.length; i++) {
+        let p = pools[i];
+        merged = merged.filter(n => p.has(n));
+    }
+    let finalNums = merged.sort((a, b) => a - b);
 
     if (finalNums.length === 0) {
         resultDiv.innerHTML = "❌ 号码和分类无交集！";
@@ -287,7 +506,6 @@ function runFilter() {
         return;
     }
 
-    // 组装结果
     let finalAnimals = [...new Set(finalNums.map(n => NUM_TO_ZODIAC[n]))];
     let details = [];
     finalNums.forEach(n => {
@@ -301,24 +519,92 @@ function runFilter() {
     if (tags.length) conditionStr.push(tags.join(' + '));
     if (inputSets.length) conditionStr.push(`指定号码(${inputSets.length}组交集)`);
 
+    let detailRowsHtml = conditionDetails.map(row => {
+        let valHtml = row.label.includes('波') || row.label.includes('交集') || row.label.includes('输入')
+            ? row.value.split(' ').map(v => v ? `<span class="num-chip">${v}</span>` : '').join('')
+            : row.value;
+        let style = row.highlight ? 'background:#f3e8ff;border-radius:6px;padding:4px 6px;margin:2px 0;' : '';
+        return `<div class="help-row" style="${style}">
+            <span class="help-tag">${row.label}</span>
+            <span class="help-val">${valHtml}</span>
+        </div>`;
+    }).join('');
+
     resultDiv.innerHTML = `
         <div style="font-weight:bold; margin-bottom:8px;">📌 条件：${conditionStr.join(' | ')}</div>
         <div style="margin-bottom:8px;">🎯 交集生肖：<b style="color:#4a148c">${finalAnimals.join('，')}</b> <span style="color:#999;font-size:12px;">(共${finalAnimals.length}肖)</span></div>
         <div style="margin-bottom:8px;">🔢 号码明细(共${details.length}个)：</div>
         <div class="num-detail">${details.join('、')}</div>
+
+        <button class="detail-toggle" onclick="toggleDetail(this)">
+            <span>条件明细</span><span class="arrow">▾</span>
+        </button>
+        <div class="detail-panel">${detailRowsHtml}</div>
     `;
     resultDiv.classList.add('show');
+}
+
+function toggleDetail(btn) {
+    let panel = btn.nextElementSibling;
+    let arrow = btn.querySelector('.arrow');
+    panel.classList.toggle('show');
+    if (panel.classList.contains('show')) {
+        arrow.textContent = '▴';
+        btn.querySelector('span:first-child').textContent = '收起明细';
+    } else {
+        arrow.textContent = '▾';
+        btn.querySelector('span:first-child').textContent = '条件明细';
+    }
 }
 
 function clearAll() {
     selectedTags.clear();
     let container = document.getElementById('numInputsContainer');
-    container.innerHTML = `<input type="text" class="num-input-box" placeholder="第一组号码，如：🔥17 23 2 10 19">`;
+    container.innerHTML = `
+        <div class="num-input-row">
+            <span class="num-input-prefix">#</span>
+            <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19">
+        </div>`;
     document.getElementById('result').classList.remove('show');
+    document.getElementById('parseInput').value = '';
+    document.getElementById('parseResult').innerHTML = '';
     renderTags();
 }
 
-// 初始化
+function addNumInput() {
+    let container = document.getElementById('numInputsContainer');
+    let count = container.querySelectorAll('.num-input-box').length + 1;
+
+    let row = document.createElement('div');
+    row.className = 'num-input-row';
+    let prefix = document.createElement('span');
+    prefix.className = 'num-input-prefix';
+    prefix.textContent = '#';
+    let input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'num-input-box';
+    input.placeholder = `第${count}组号码`;
+    let delBtn = document.createElement('button');
+    delBtn.className = 'del-btn';
+    delBtn.innerHTML = '×';
+    delBtn.onclick = function() {
+        row.remove();
+        updatePlaceholders();
+    };
+    row.appendChild(prefix);
+    row.appendChild(input);
+    row.appendChild(delBtn);
+    container.appendChild(row);
+}
+
+function updatePlaceholders() {
+    let inputs = document.querySelectorAll('.num-input-box');
+    inputs.forEach((input, index) => {
+        if (input.id === 'parseInput') return;
+        input.placeholder = `第${index + 1}组号码`;
+    });
+}
+
 renderTags();
 </script>
 </body>
