@@ -142,6 +142,25 @@
     }
     .del-btn:hover { background: #fecaca; transform: scale(1.08); }
 
+    /* 输入框右侧快速清空按钮 */
+    .clear-btn {
+        width: 24px; height: 24px;
+        border-radius: 50%;
+        border: none;
+        background: #e2e8f0;
+        color: #64748b;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: none;              /* 默认隐藏，有内容才显示 */
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, color 0.15s;
+    }
+    .clear-btn:hover { background: #cbd5e1; color: #334155; }
+    .clear-btn.show { display: flex; }
+
     #numInputsContainer { display: flex; flex-direction: column; gap: 10px; }
 
     /* 解析结果卡片 */
@@ -172,7 +191,7 @@
 </style>
 </head>
 <body>
-<div style="position:fixed;top:42px;left:10px;z-index:99999;background:#9c27b0;color:#fff;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
+<div style="position:fixed;top:40px;left:10px;z-index:99999;background:#9c27b0;color:#fff;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
 <div class="container">
     <h1>🔍 分类交集筛选</h1>
 
@@ -189,7 +208,8 @@
         <div id="numInputsContainer">
             <div class="num-input-row">
                 <span class="num-input-prefix">#</span>
-                <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19">
+                <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19" oninput="toggleClearBtn(this)">
+                <button class="clear-btn" onclick="clearInput(this)">×</button>
             </div>
         </div>
     </div>
@@ -198,14 +218,16 @@
         <button class="btn" onclick="runFilter()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(45deg,#4caf50,#2ecc71); color: #fff; font-size: 16px; cursor: pointer;">确认分析</button>
         <button class="btn" onclick="clearAll()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: #f5f5f5; color: #333; font-size: 16px; cursor: pointer;">清空</button>
     </div>
+
     <div id="result" class="result-area"></div>
 
-            <!-- ★ 新增：单独号码解析 -->
-    <div class="card">
+    <!-- 号码属性解析 -->
+    <div class="card" style="margin-top: 14px;">
         <div class="card-title">🧩 号码属性解析（输入任意符号分隔）</div>
         <div class="num-input-row">
             <span class="num-input-prefix">🔎</span>
-            <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5、7-9 11+13 或 01.02/03">
+            <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5、7-9 11+13 或 01.02/03" oninput="toggleClearBtn(this)">
+            <button class="clear-btn" onclick="clearInput(this)">×</button>
         </div>
         <button onclick="parseNums()" style="width:100%; margin-top:10px; padding:10px; border-radius:12px; border:none; background:linear-gradient(45deg,#3b82f6,#60a5fa); color:#fff; font-size:14px; cursor:pointer;">解析号码属性</button>
         <div id="parseResult" class="parse-result"></div>
@@ -312,6 +334,73 @@ function openHelp(type) {
 }
 function closeHelp() { document.getElementById('helpMask').classList.remove('show'); }
 
+// ==================== 输入框快速清空 ====================
+// 有内容时显示清空按钮
+function toggleClearBtn(input) {
+    let btn = input.parentElement.querySelector('.clear-btn');
+    if (!btn) return;
+    btn.classList.toggle('show', input.value.length > 0);
+}
+
+// 点击清空输入框
+function clearInput(btn) {
+    let input = btn.parentElement.querySelector('.num-input-box');
+    if (!input) return;
+    input.value = '';
+    btn.classList.remove('show');
+    input.focus();
+    // 解析框清空时同步清掉解析结果
+    if (input.id === 'parseInput') {
+        document.getElementById('parseResult').innerHTML = '';
+    }
+}
+
+// ==================== 号码解析 ====================
+function parseNums() {
+    let raw = document.getElementById('parseInput').value.trim();
+    let out = document.getElementById('parseResult');
+
+    if (!raw) {
+        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入号码</div>`;
+        return;
+    }
+
+    let matched = raw.match(/\d{1,2}/g) || [];
+    let nums = [];
+    matched.forEach(m => {
+        let n = parseInt(m);
+        if (n >= 1 && n <= 49 && !nums.includes(n)) nums.push(n);
+    });
+
+    if (nums.length === 0) {
+        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效号码（1-49）</div>`;
+        return;
+    }
+
+    nums.sort((a, b) => a - b);
+
+    let rows = nums.map(n => {
+        let z = NUM_TO_ZODIAC[n] || '?';
+        let w = NUM_TO_WUXING[n] || '?';
+        let color = getColor(n);
+        let boseName = getBoseName(n);
+        return `<tr>
+            <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
+            <td>${z}</td>
+            <td>${w}</td>
+            <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
+        </tr>`;
+    }).join('');
+
+    out.innerHTML = `
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共识别 ${nums.length} 个号码</div>
+        <table class="parse-table">
+            <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
 // ==================== UI 渲染 ====================
 const tagGroup = document.getElementById('tagGroup');
 let selectedTags = new Set();
@@ -361,53 +450,6 @@ function createTagLabel(value, text) {
     return label;
 }
 
-// ==================== ★ 号码解析 ====================
-function parseNums() {
-    let raw = document.getElementById('parseInput').value.trim();
-    let out = document.getElementById('parseResult');
-
-    if (!raw) {
-        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入号码</div>`;
-        return;
-    }
-
-    // 提取所有 1-49 的数字（支持任意符号分隔，包括 - 区间、. / 、 + 等）
-    let matched = raw.match(/\d{1,2}/g) || [];
-    let nums = [];
-    matched.forEach(m => {
-        let n = parseInt(m);
-        if (n >= 1 && n <= 49 && !nums.includes(n)) nums.push(n);
-    });
-
-    if (nums.length === 0) {
-        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效号码（1-49）</div>`;
-        return;
-    }
-
-    nums.sort((a, b) => a - b);
-
-    let rows = nums.map(n => {
-        let z = NUM_TO_ZODIAC[n] || '?';
-        let w = NUM_TO_WUXING[n] || '?';
-        let color = getColor(n);
-        let boseName = getBoseName(n);
-        return `<tr>
-            <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
-            <td>${z}</td>
-            <td>${w}</td>
-            <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
-        </tr>`;
-    }).join('');
-
-    out.innerHTML = `
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共识别 ${nums.length} 个号码</div>
-        <table class="parse-table">
-            <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
-            <tbody>${rows}</tbody>
-        </table>
-    `;
-}
-
 // ==================== 核心逻辑 ====================
 function runFilter() {
     let resultDiv = document.getElementById('result');
@@ -419,7 +461,6 @@ function runFilter() {
 
     let inputSets = [];
     document.querySelectorAll('.num-input-box').forEach(el => {
-        // 跳过解析输入框
         if (el.id === 'parseInput') return;
         let val = el.value.trim();
         if (val) {
@@ -563,7 +604,8 @@ function clearAll() {
     container.innerHTML = `
         <div class="num-input-row">
             <span class="num-input-prefix">#</span>
-            <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19">
+            <input type="text" class="num-input-box" placeholder="第一组号码，如：17 23 2 10 19" oninput="toggleClearBtn(this)">
+            <button class="clear-btn" onclick="clearInput(this)">×</button>
         </div>`;
     document.getElementById('result').classList.remove('show');
     document.getElementById('parseInput').value = '';
@@ -584,6 +626,13 @@ function addNumInput() {
     input.type = 'text';
     input.className = 'num-input-box';
     input.placeholder = `第${count}组号码`;
+    input.setAttribute('oninput', 'toggleClearBtn(this)');
+
+    let clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-btn';
+    clearBtn.innerHTML = '×';
+    clearBtn.onclick = function() { clearInput(this); };
+
     let delBtn = document.createElement('button');
     delBtn.className = 'del-btn';
     delBtn.innerHTML = '×';
@@ -591,8 +640,10 @@ function addNumInput() {
         row.remove();
         updatePlaceholders();
     };
+
     row.appendChild(prefix);
     row.appendChild(input);
+    row.appendChild(clearBtn);
     row.appendChild(delBtn);
     container.appendChild(row);
 }
@@ -608,4 +659,3 @@ function updatePlaceholders() {
 renderTags();
 </script>
 </body>
-</html>
