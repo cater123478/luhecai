@@ -6,7 +6,7 @@
     <title>特码投注 · 生肖波色</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fb; padding: 16px 12px 40px; color: #0f172a; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fb; padding: 56px 12px 40px; color: #0f172a; }
         .container { max-width: 480px; margin: 0 auto; }
         h1 { font-size: 1.6rem; font-weight: 600; margin-bottom: 12px; text-align: center; align-items: center; gap: 6px; color: #0f172a; justify-content: center; }
         h1 small { font-size: 0.9rem; font-weight: 400; color: #64748b; margin-left: 8px; }
@@ -165,10 +165,25 @@
         .popup-amount[type="number"] { -moz-appearance: textfield; }
         .flex-row { display: flex; gap: 10px; }
         .flex-row .btn { flex: 1; }
+        /* 返回按钮统一固定顶部 */
+        .back-fixed {
+            position: fixed;
+            top: 12px;
+            left: 10px;
+            z-index: 99999;
+            background: #ff6f00;
+            color: #333;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 15px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
-<div style="top:18px;left:10px;z-index:99999;background:#ff6f00;color:#333;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
+<div class="back-fixed" onclick="history.back()">← 返回</div>
 <div class="container">
     <h1>🎯 特码投注 <small>生肖·波色</small></h1>
 
