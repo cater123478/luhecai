@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>分类交集筛选</title>
+<title>分类筛选</title>
 <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fb; padding: 16px 12px 40px; color: #0f172a; }
     .container { max-width: 650px; margin: 0 auto; }
@@ -186,7 +186,7 @@
 
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div class="card-title" style="margin: 0;">🔢 输入指定号码（可选，取交集）</div>
+            <div class="card-title" style="margin: 0;">🔢 输入指定号码/交集（可选，取交集）</div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <button onclick="addNumInput()" title="添加一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#7b1fa2,#4a148c); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(123,31,162,0.35);">+</button>
                 <button onclick="removeNumInput()" title="删除一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#ef4444,#dc2626); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(220,38,38,0.35);">×</button>
@@ -210,10 +210,10 @@
 
     <!-- 号码属性解析 -->
     <div class="card" style="margin-top: 14px;">
-        <div class="card-title">🧩 号码属性解析（输入任意符号分隔）</div>
+        <div class="card-title">🧩 号码/生肖属性解析（输入任意符号分隔）</div>
         <div class="num-input-row">
             <span class="num-input-prefix">🔎</span>
-            <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5、7-9 11+13 或 01.02/03" oninput="toggleClearBtn(this)">
+            <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5 或 马 蛇 龙 或混合输入" oninput="toggleClearBtn(this)">
             <button class="clear-btn" onclick="clearInput(this)">×</button>
         </div>
         <button onclick="parseNums()" style="width:100%; margin-top:10px; padding:10px; border-radius:12px; border:none; background:linear-gradient(45deg,#3b82f6,#60a5fa); color:#fff; font-size:14px; cursor:pointer;">解析号码属性</button>
@@ -363,44 +363,81 @@ function parseNums() {
     let out = document.getElementById('parseResult');
 
     if (!raw) {
-        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入号码</div>`;
+        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入号码或生肖</div>`;
         return;
     }
 
+    // 号码
     let matched = raw.match(/\d{1,2}/g) || [];
     let nums = [];
     matched.forEach(m => {
         let n = parseInt(m);
         if (n >= 1 && n <= 49 && !nums.includes(n)) nums.push(n);
     });
+    nums.sort((a, b) => a - b);
 
-    if (nums.length === 0) {
-        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效号码（1-49）</div>`;
+    // 生肖
+    const ZODIAC_CHARS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+    let zodiacs = [];
+    for (let ch of raw) {
+        if (ZODIAC_CHARS.includes(ch) && !zodiacs.includes(ch)) zodiacs.push(ch);
+    }
+
+    if (nums.length === 0 && zodiacs.length === 0) {
+        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效号码（1-49）或生肖</div>`;
         return;
     }
 
-    nums.sort((a, b) => a - b);
+    let html = '';
 
-    let rows = nums.map(n => {
-        let z = NUM_TO_ZODIAC[n] || '?';
-        let w = NUM_TO_WUXING[n] || '?';
-        let color = getColor(n);
-        let boseName = getBoseName(n);
-        return `<tr>
-            <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
-            <td>${z}</td>
-            <td>${w}</td>
-            <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
-        </tr>`;
-    }).join('');
+    // 号码表
+    if (nums.length > 0) {
+        let rows = nums.map(n => {
+            let z = NUM_TO_ZODIAC[n] || '?';
+            let w = NUM_TO_WUXING[n] || '?';
+            let color = getColor(n);
+            let boseName = getBoseName(n);
+            return `<tr>
+                <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
+                <td>${z}</td>
+                <td>${w}</td>
+                <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
+            </tr>`;
+        }).join('');
 
-    out.innerHTML = `
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共识别 ${nums.length} 个号码</div>
-        <table class="parse-table">
-            <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
-            <tbody>${rows}</tbody>
-        </table>
-    `;
+        html += `
+            <div style="font-size:12px;color:#94a3b8;margin:6px 0;">共识别 ${nums.length} 个号码</div>
+            <table class="parse-table">
+                <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    // 生肖表
+    if (zodiacs.length > 0) {
+        let rows = zodiacs.map(z => {
+            let numsOfZ = ZODIAC_NUMS[z] || [];
+            let wuxingSet = [...new Set(numsOfZ.map(n => NUM_TO_WUXING[n]))].join('/');
+            let boseSet = [...new Set(numsOfZ.map(n => NUM_TO_BOSE[n]))].join('/');
+            return `<tr>
+                <td><b style="font-size:15px;">${z}</b></td>
+                <td style="font-family:'Courier New',monospace;">${numsOfZ.map(n=>n.toString().padStart(2,'0')).join(' ')}</td>
+                <td>${wuxingSet}</td>
+                <td>${boseSet}</td>
+            </tr>`;
+        }).join('');
+
+        html += `
+            <div style="font-size:12px;color:#94a3b8;margin:10px 0 6px;">共识别 ${zodiacs.length} 个生肖</div>
+            <table class="parse-table">
+                <thead><tr><th>生肖</th><th>对应号码</th><th>五行</th><th>波色</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    out.innerHTML = html;
 }
 
 // ==================== UI 渲染 ====================
@@ -469,27 +506,53 @@ function runFilter() {
     let wuxingTags = tags.filter(t => WUXING_CATEGORIES[t] !== undefined);
     let touTags = tags.filter(t => TOU_CATEGORIES[t] !== undefined);
 
-    let inputSets = [];
+    // 生肖字表
+    const ZODIAC_CHARS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+
+    let inputSets = [];          // 号码组
+    let inputZodiacSets = [];    // 生肖组
+
     document.querySelectorAll('.num-input-box').forEach(el => {
         if (el.id === 'parseInput') return;
         let val = el.value.trim();
-        if (val) {
-            let nums = new Set();
-            let matches = val.match(/\d{1,2}/g);
-            if (matches) {
-                matches.forEach(m => {
-                    let n = parseInt(m);
-                    if (n >= 1 && n <= 49) nums.add(n);
-                });
-            }
-            if (nums.size > 0) inputSets.push(nums);
+        if (!val) return;
+
+        // 提取号码
+        let nums = new Set();
+        let matches = val.match(/\d{1,2}/g);
+        if (matches) {
+            matches.forEach(m => {
+                let n = parseInt(m);
+                if (n >= 1 && n <= 49) nums.add(n);
+            });
         }
+        if (nums.size > 0) inputSets.push(nums);
+
+        // 提取生肖
+        let zset = new Set();
+        for (let ch of val) {
+            if (ZODIAC_CHARS.includes(ch)) zset.add(ch);
+        }
+        if (zset.size > 0) inputZodiacSets.push(zset);
     });
 
     let inputNumsIntersect = null;
     for (let set of inputSets) {
         if (inputNumsIntersect === null) inputNumsIntersect = set;
         else inputNumsIntersect = new Set([...inputNumsIntersect].filter(n => set.has(n)));
+    }
+    // 多组生肖求交集
+    let inputZodiacIntersect = null;
+    for (let set of inputZodiacSets) {
+        if (inputZodiacIntersect === null) inputZodiacIntersect = set;
+        else inputZodiacIntersect = new Set([...inputZodiacIntersect].filter(z => set.has(z)));
+    }
+
+    // 输入生肖无交集 → 直接提示
+    if (inputZodiacSets.length > 0 && (!inputZodiacIntersect || inputZodiacIntersect.size === 0)) {
+        resultDiv.innerHTML = "❌ 输入的多组生肖之间无交集！";
+        resultDiv.classList.add('show');
+        return;
     }
 
     if (inputSets.length > 0 && (!inputNumsIntersect || inputNumsIntersect.size === 0)) {
@@ -552,6 +615,16 @@ function runFilter() {
         conditionDetails.push({ label: '输入号码交集', value: [...inputNumsIntersect].sort((a,b)=>a-b).map(n => n.toString().padStart(2,'0')).join(' ') });
     }
 
+    // ★ 输入生肖交集 → 转号码池
+    if (inputZodiacIntersect && inputZodiacIntersect.size > 0) {
+        let zPool = new Set();
+        for (let z of inputZodiacIntersect) {
+            if (ZODIAC_NUMS[z]) ZODIAC_NUMS[z].forEach(n => zPool.add(n));
+        }
+        pools.push(zPool);
+        conditionDetails.push({ label: '输入生肖交集', value: [...inputZodiacIntersect].join(' '), highlight: true });
+    }
+
     let merged = [...pools[0]];
     for (let i = 1; i < pools.length; i++) {
         let p = pools[i];
@@ -579,7 +652,10 @@ function runFilter() {
     if (inputSets.length) conditionStr.push(`指定号码(${inputSets.length}组交集)`);
 
     let detailRowsHtml = conditionDetails.map(row => {
-        let valHtml = row.label.includes('波') || row.label.includes('交集') || row.label.includes('输入') || row.label.includes('头')
+        let isNumLike = row.label.includes('波') || row.label.includes('头') ||
+                row.label === '输入号码交集' ||
+                row.label === '生肖交集';
+        let valHtml = isNumLike
             ? row.value.split(' ').map(v => v ? `<span class="num-chip">${v}</span>` : '').join('')
             : row.value;
         let style = row.highlight ? 'background:#f3e8ff;border-radius:6px;padding:4px 6px;margin:2px 0;' : '';
