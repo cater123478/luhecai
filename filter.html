@@ -125,24 +125,8 @@
         min-width: 0;
     }
     .num-input-box::placeholder { color: #94a3b8; }
-    .del-btn {
-        width: 32px; height: 32px;
-        border-radius: 50%;
-        border: none;
-        background: #fee2e2;
-        color: #dc2626;
-        font-size: 18px;
-        line-height: 1;
-        cursor: pointer;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.15s, transform 0.15s;
-    }
-    .del-btn:hover { background: #fecaca; transform: scale(1.08); }
 
-    /* 输入框右侧快速清空按钮 */
+    /* 输入框内部快速清空按钮 */
     .clear-btn {
         width: 24px; height: 24px;
         border-radius: 50%;
@@ -193,7 +177,7 @@
 <body>
 <div style="position:fixed;top:40px;left:10px;z-index:99999;background:#9c27b0;color:#fff;padding:6px 14px;border-radius:20px;font-size:15px;cursor:pointer;border:1px solid #ddd;box-shadow:0 2px 6px rgba(0,0,0,0.1);" onclick="history.back()">← 返回</div>
 <div class="container">
-    <h1>🔍 分类交集筛选</h1>
+    <h1>🔍 分类筛选</h1>
 
     <div class="card">
         <div class="card-title">📌 选择分类标签</div>
@@ -203,7 +187,10 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <div class="card-title" style="margin: 0;">🔢 输入指定号码（可选，取交集）</div>
-            <button onclick="addNumInput()" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#7b1fa2,#4a148c); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(123,31,162,0.35);">+</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button onclick="addNumInput()" title="添加一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#7b1fa2,#4a148c); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(123,31,162,0.35);">+</button>
+                <button onclick="removeNumInput()" title="删除一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#ef4444,#dc2626); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(220,38,38,0.35);">×</button>
+            </div>
         </div>
         <div id="numInputsContainer">
             <div class="num-input-row">
@@ -216,7 +203,7 @@
 
     <div style="display: flex; gap: 10px; margin-bottom: 14px;">
         <button class="btn" onclick="runFilter()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(45deg,#4caf50,#2ecc71); color: #fff; font-size: 16px; cursor: pointer;">确认分析</button>
-        <button class="btn" onclick="clearAll()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: #f5f5f5; color: #333; font-size: 16px; cursor: pointer;">清空</button>
+        <button class="btn" onclick="clearAll()" style="flex: 1; padding: 14px; border-radius: 12px; border: none; background: #cac8c8; color: #171111; font-size: 16px; cursor: pointer;">清空</button>
     </div>
 
     <div id="result" class="result-area"></div>
@@ -287,6 +274,15 @@ const BOSE = {
 const BOSE_CATEGORIES = { "红波": BOSE["红"], "绿波": BOSE["绿"], "蓝波": BOSE["蓝"] };
 const WUXING_CATEGORIES = { "金": WUXING["金"], "木": WUXING["木"], "水": WUXING["水"], "火": WUXING["火"], "土": WUXING["土"] };
 
+// ★ 新增：0-4头分类（多选取并集）
+const TOU_CATEGORIES = {
+    "0头": [1,2,3,4,5,6,7,8,9],
+    "1头": [10,11,12,13,14,15,16,17,18,19],
+    "2头": [20,21,22,23,24,25,26,27,28,29],
+    "3头": [30,31,32,33,34,35,36,37,38,39],
+    "4头": [40,41,42,43,44,45,46,47,48,49]
+};
+
 const NUM_TO_ZODIAC = {};
 for (let z in ZODIAC_NUMS) ZODIAC_NUMS[z].forEach(n => NUM_TO_ZODIAC[n] = z);
 const NUM_TO_WUXING = {};
@@ -327,6 +323,12 @@ function openHelp(type) {
             let nums = WUXING_CATEGORIES[tag].map(n => `<span class="num-chip">${n.toString().padStart(2,'0')}</span>`).join('');
             rowsHtml += `<div class="help-row"><span class="help-tag">${tag}</span><span class="help-val">${nums}</span></div>`;
         }
+    } else if (type === 'tou') {
+        title = '头数分类速查';
+        for (let tag in TOU_CATEGORIES) {
+            let nums = TOU_CATEGORIES[tag].map(n => `<span class="num-chip">${n.toString().padStart(2,'0')}</span>`).join('');
+            rowsHtml += `<div class="help-row"><span class="help-tag">${tag}</span><span class="help-val">${nums}</span></div>`;
+        }
     }
     document.getElementById('helpTitle').textContent = title;
     document.getElementById('helpBody').innerHTML = rowsHtml;
@@ -334,7 +336,7 @@ function openHelp(type) {
 }
 function closeHelp() { document.getElementById('helpMask').classList.remove('show'); }
 
-// ==================== 输入框快速清空 ====================
+// ==================== 输入框内部快速清空 ====================
 // 有内容时显示清空按钮
 function toggleClearBtn(input) {
     let btn = input.parentElement.querySelector('.clear-btn');
@@ -342,7 +344,7 @@ function toggleClearBtn(input) {
     btn.classList.toggle('show', input.value.length > 0);
 }
 
-// 点击清空输入框
+// 点击清空当前输入框内容
 function clearInput(btn) {
     let input = btn.parentElement.querySelector('.num-input-box');
     if (!input) return;
@@ -432,6 +434,13 @@ function renderTags() {
     wuxingRow.className = 'checkbox-group';
     tagGroup.appendChild(wuxingRow);
     for (let tag in WUXING_CATEGORIES) wuxingRow.appendChild(createTagLabel(tag, tag));
+
+    // ★ 新增：头数分类
+    tagGroup.appendChild(makeGroupTitle('头数分类（多选取并集）', 'tou'));
+    let touRow = document.createElement('div');
+    touRow.className = 'checkbox-group';
+    tagGroup.appendChild(touRow);
+    for (let tag in TOU_CATEGORIES) touRow.appendChild(createTagLabel(tag, tag));
 }
 
 function createTagLabel(value, text) {
@@ -458,6 +467,7 @@ function runFilter() {
     let zodiacTags = tags.filter(t => CATEGORIES[t] !== undefined);
     let boseTags = tags.filter(t => BOSE_CATEGORIES[t] !== undefined);
     let wuxingTags = tags.filter(t => WUXING_CATEGORIES[t] !== undefined);
+    let touTags = tags.filter(t => TOU_CATEGORIES[t] !== undefined);
 
     let inputSets = [];
     document.querySelectorAll('.num-input-box').forEach(el => {
@@ -529,6 +539,14 @@ function runFilter() {
         wuxingTags.forEach(tag => conditionDetails.push({ label: tag, value: WUXING_CATEGORIES[tag].map(n => n.toString().padStart(2,'0')).join(' ') }));
     }
 
+    // ★ 新增：头数分类并集
+    if (touTags.length > 0) {
+        let s = new Set();
+        for (let t of touTags) TOU_CATEGORIES[t].forEach(n => s.add(n));
+        pools.push(s);
+        touTags.forEach(tag => conditionDetails.push({ label: tag, value: TOU_CATEGORIES[tag].map(n => n.toString().padStart(2,'0')).join(' ') }));
+    }
+
     if (inputNumsIntersect && inputNumsIntersect.size > 0) {
         pools.push(inputNumsIntersect);
         conditionDetails.push({ label: '输入号码交集', value: [...inputNumsIntersect].sort((a,b)=>a-b).map(n => n.toString().padStart(2,'0')).join(' ') });
@@ -561,7 +579,7 @@ function runFilter() {
     if (inputSets.length) conditionStr.push(`指定号码(${inputSets.length}组交集)`);
 
     let detailRowsHtml = conditionDetails.map(row => {
-        let valHtml = row.label.includes('波') || row.label.includes('交集') || row.label.includes('输入')
+        let valHtml = row.label.includes('波') || row.label.includes('交集') || row.label.includes('输入') || row.label.includes('头')
             ? row.value.split(' ').map(v => v ? `<span class="num-chip">${v}</span>` : '').join('')
             : row.value;
         let style = row.highlight ? 'background:#f3e8ff;border-radius:6px;padding:4px 6px;margin:2px 0;' : '';
@@ -610,12 +628,15 @@ function clearAll() {
     document.getElementById('result').classList.remove('show');
     document.getElementById('parseInput').value = '';
     document.getElementById('parseResult').innerHTML = '';
+    let pb = document.querySelector('#parseInput + .clear-btn');
+    if (pb) pb.classList.remove('show');
     renderTags();
 }
 
+// 添加一行输入框（带内部清空打叉）
 function addNumInput() {
     let container = document.getElementById('numInputsContainer');
-    let count = container.querySelectorAll('.num-input-box').length + 1;
+    let count = container.querySelectorAll('.num-input-row').length + 1;
 
     let row = document.createElement('div');
     row.className = 'num-input-row';
@@ -633,25 +654,33 @@ function addNumInput() {
     clearBtn.innerHTML = '×';
     clearBtn.onclick = function() { clearInput(this); };
 
-    let delBtn = document.createElement('button');
-    delBtn.className = 'del-btn';
-    delBtn.innerHTML = '×';
-    delBtn.onclick = function() {
-        row.remove();
-        updatePlaceholders();
-    };
-
     row.appendChild(prefix);
     row.appendChild(input);
     row.appendChild(clearBtn);
-    row.appendChild(delBtn);
     container.appendChild(row);
+    updatePlaceholders();
+}
+
+// 删除最后一行输入框（至少保留一行，保留的最后一行只清空内容）
+function removeNumInput() {
+    let container = document.getElementById('numInputsContainer');
+    let rows = container.querySelectorAll('.num-input-row');
+    if (rows.length <= 1) {
+        let input = rows[0].querySelector('.num-input-box');
+        if (input) {
+            input.value = '';
+            let cb = rows[0].querySelector('.clear-btn');
+            if (cb) cb.classList.remove('show');
+        }
+        return;
+    }
+    rows[rows.length - 1].remove();
+    updatePlaceholders();
 }
 
 function updatePlaceholders() {
-    let inputs = document.querySelectorAll('.num-input-box');
+    let inputs = document.querySelectorAll('#numInputsContainer .num-input-box');
     inputs.forEach((input, index) => {
-        if (input.id === 'parseInput') return;
         input.placeholder = `第${index + 1}组号码`;
     });
 }
@@ -659,3 +688,4 @@ function updatePlaceholders() {
 renderTags();
 </script>
 </body>
+</html>
