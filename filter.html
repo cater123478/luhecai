@@ -199,6 +199,15 @@
                 <button class="clear-btn" onclick="clearInput(this)">×</button>
             </div>
         </div>
+
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+            <div class="card-title" style="margin-bottom:8px;">🚫 剔除号码/生肖</div>
+            <div class="num-input-row">
+                <span class="num-input-prefix">−</span>
+                <input type="text" id="excludeInput" class="num-input-box" placeholder="如：马 蛇 或 1,7,13 或混合，支持任意符号" oninput="toggleClearBtn(this)">
+                <button class="clear-btn" onclick="clearInput(this)">×</button>
+            </div>
+        </div>
     </div>
 
     <div style="display: flex; gap: 10px; margin-bottom: 14px;">
@@ -513,7 +522,7 @@ function runFilter() {
     let inputZodiacSets = [];    // 生肖组
 
     document.querySelectorAll('.num-input-box').forEach(el => {
-        if (el.id === 'parseInput') return;
+        if (el.id === 'parseInput' || el.id === 'excludeInput') return;
         let val = el.value.trim();
         if (!val) return;
 
@@ -637,6 +646,45 @@ function runFilter() {
         resultDiv.classList.add('show');
         return;
     }
+        // ★ 剔除逻辑：根据剔除框里的任意生肖/号码过滤最终结果
+    let excludeRaw = (document.getElementById('excludeInput')?.value || '').trim();
+    let excludeNums = new Set();
+    let excludeZodiacs = new Set();
+
+    if (excludeRaw) {
+        const ZODIAC_CHARS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+
+        // 剔除号码
+        let mNum = excludeRaw.match(/\d{1,2}/g) || [];
+        mNum.forEach(m => {
+            let n = parseInt(m);
+            if (n >= 1 && n <= 49) excludeNums.add(n);
+        });
+
+        // 剔出生肖
+        for (let ch of excludeRaw) {
+            if (ZODIAC_CHARS.includes(ch)) excludeZodiacs.add(ch);
+        }
+
+        // 生肖 → 号码
+        excludeZodiacs.forEach(z => {
+            (ZODIAC_NUMS[z] || []).forEach(n => excludeNums.add(n));
+        });
+
+        if (excludeNums.size > 0) {
+            finalNums = finalNums.filter(n => !excludeNums.has(n));
+
+            if (finalNums.length === 0) {
+                let exDesc = [];
+                if (excludeZodiacs.size) exDesc.push([...excludeZodiacs].join(' '));
+                let onlyNumEx = [...excludeNums].filter(n => !excludeZodiacs.size || ![...excludeZodiacs].some(z => (ZODIAC_NUMS[z]||[]).includes(n)));
+                if (onlyNumEx.length) exDesc.push(onlyNumEx.sort((a,b)=>a-b).map(n=>n.toString().padStart(2,'0')).join(' '));
+                resultDiv.innerHTML = `❌ 剔除后无剩余号码（剔除：${exDesc.join(' + ')}）`;
+                resultDiv.classList.add('show');
+                return;
+            }
+        }
+    }
 
     let finalAnimals = [...new Set(finalNums.map(n => NUM_TO_ZODIAC[n]))];
     let details = [];
@@ -671,6 +719,8 @@ function runFilter() {
         <div style="margin-bottom:8px;">🔢 号码明细(共${details.length}个)：</div>
         <div class="num-detail">${details.join('、')}</div>
 
+        ${excludeRaw ? `<div style="margin-top:8px;font-size:12.5px;color:#dc2626;">🚫 已剔除：${excludeRaw}</div>` : ''}
+
         <button class="detail-toggle" onclick="toggleDetail(this)">
             <span>条件明细</span><span class="arrow">▾</span>
         </button>
@@ -704,6 +754,12 @@ function clearAll() {
     document.getElementById('result').classList.remove('show');
     document.getElementById('parseInput').value = '';
     document.getElementById('parseResult').innerHTML = '';
+    let ex = document.getElementById('excludeInput');
+    if (ex) {
+        ex.value = '';
+        let exBtn = ex.parentElement.querySelector('.clear-btn');
+        if (exBtn) exBtn.classList.remove('show');
+    }
     let pb = document.querySelector('#parseInput + .clear-btn');
     if (pb) pb.classList.remove('show');
     renderTags();
