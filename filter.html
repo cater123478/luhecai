@@ -228,6 +228,16 @@
         <button onclick="parseNums()" style="width:100%; margin-top:10px; padding:10px; border-radius:12px; border:none; background:linear-gradient(45deg,#3b82f6,#60a5fa); color:#fff; font-size:14px; cursor:pointer;">解析号码属性</button>
         <div id="parseResult" class="parse-result"></div>
     </div>
+    <!-- 最近30期分类结果 -->
+    <div class="card" style="margin-top:14px;">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span id="recent30Title">📊 最近30期分类结果</span>
+            <button onclick="loadRecent30()" style="padding:6px 14px; border-radius:20px; border:none; background:linear-gradient(45deg,#0ea5e9,#38bdf8); color:#fff; font-size:13px; cursor:pointer;">加载/刷新</button>
+        </div>
+        <div id="recent30Box" style="font-size:13px; line-height:1.9;">
+            <div style="color:#94a3b8; font-size:13px; padding:8px 0;">点击“加载/刷新”查看最近30期分类结果</div>
+        </div>
+    </div>
 </div>
 
 <!-- 速查弹层 -->
@@ -242,6 +252,7 @@
 </div>
 
 <script>
+const RECENT_LIMIT = 30;
 // ==================== 数据字典 ====================
 const CATEGORIES = {
     "吃肉": ["虎", "蛇", "龙", "狗"],
@@ -503,6 +514,117 @@ function createTagLabel(value, text) {
     label.appendChild(cb);
     label.appendChild(document.createTextNode(text));
     return label;
+}
+
+// ==================== 最近30期分类结果 ====================
+const KJ_ZODIAC_MAP = {
+    1:'马',2:'蛇',3:'龙',4:'兔',5:'虎',6:'牛',7:'鼠',8:'猪',9:'狗',10:'鸡',11:'猴',12:'羊',
+    13:'马',14:'蛇',15:'龙',16:'兔',17:'虎',18:'牛',19:'鼠',20:'猪',21:'狗',22:'鸡',23:'猴',24:'羊',
+    25:'马',26:'蛇',27:'龙',28:'兔',29:'虎',30:'牛',31:'鼠',32:'猪',33:'狗',34:'鸡',35:'猴',36:'羊',
+    37:'马',38:'蛇',39:'龙',40:'兔',41:'虎',42:'牛',43:'鼠',44:'猪',45:'狗',46:'鸡',47:'猴',48:'羊',
+    49:'马'
+};
+
+function kjGetCategory(z) {
+    if (['虎','蛇','龙','狗'].includes(z)) return '肉';
+    if (['猪','鼠','鸡','猴'].includes(z)) return '菜';
+    if (['牛','羊','马','兔'].includes(z)) return '草';
+    return '?';
+}
+
+function kjGetTags(zodiac) {
+    let tags = [];
+    tags.push(kjGetCategory(zodiac));
+    if (['兔','马','猴','猪','牛','龙'].includes(zodiac)) tags.push('天');
+    else if (['蛇','羊','鸡','狗','鼠','虎'].includes(zodiac)) tags.push('地');
+    if (['牛','鼠','鸡','猴','蛇','龙'].includes(zodiac)) tags.push('左');
+    else if (['猪','狗','兔','虎','羊','马'].includes(zodiac)) tags.push('右');
+    if (['鼠','牛','虎','兔','龙','蛇'].includes(zodiac)) tags.push('前');
+    else if (['猪','狗','鸡','猴','羊','马'].includes(zodiac)) tags.push('后');
+    if (['猴','蛇','龙','兔','虎','鼠'].includes(zodiac)) tags.push('野');
+    else if (['羊','马','牛','猪','狗','鸡'].includes(zodiac)) tags.push('家');
+    return tags;
+}
+
+async function loadRecent30(limit = RECENT_LIMIT) {
+    let box = document.getElementById('recent30Box');
+    let titleEl = document.getElementById('recent30Title');
+    if (titleEl) titleEl.textContent = `📊 最近${limit}期分类结果`;
+    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在加载 kj.json ...</div>`;
+
+    try {
+        let res = await fetch('kj.json?t=' + Date.now());
+        if (!res.ok) throw new Error('文件不存在或无法读取');
+        let json = await res.json();
+
+        let raw = json.data || [];
+        // 拍平
+        let flat = [];
+        raw.forEach(item => {
+            if (Array.isArray(item)) flat.push(...item);
+            else flat.push(item);
+        });
+
+        if (flat.length === 0) {
+            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ kj.json 无数据</div>`;
+            return;
+        }
+
+        // 取最新年份
+        let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
+        let maxYear = years.length ? Math.max(...years) : 0;
+        let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
+
+        // 整理每期：期号、特码、生肖、标签
+        let records = [];
+        list.forEach(item => {
+            let qishu = String(item.qishu || '').trim();
+            let numStr = String(item.num || '').trim();
+            if (!qishu || !numStr) return;
+            let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
+            if (nums.length < 7) return;
+            let openNum = nums[nums.length - 1];
+            let zodiac = KJ_ZODIAC_MAP[openNum] || '';
+            if (!zodiac) return;
+            records.push({
+                qishu: qishu,
+                num: openNum,
+                zodiac: zodiac,
+                tags: kjGetTags(zodiac)
+            });
+        });
+
+        // 期号数字排序，取最近30期（期号大的在前）
+        records.sort((a, b) => (parseInt(b.qishu) || 0) - (parseInt(a.qishu) || 0));
+        let recent = records.slice(0, limit);
+
+        if (recent.length === 0) {
+            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无有效开奖记录</div>`;
+            return;
+        }
+
+        let html = `<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共 ${recent.length} 期（最新年份 ${maxYear || '—'}）</div>`;
+        html += `<table class="parse-table" style="font-size:12.5px;">
+            <thead><tr><th>期号</th><th>特码</th><th>生肖</th><th>分类标签</th></tr></thead>
+            <tbody>`;
+        recent.forEach(r => {
+            let color = getColor(r.num);
+            let tagHtml = r.tags.map(t => `<span class="num-chip" style="margin:1px 2px;">${t}</span>`).join('');
+            html += `<tr>
+                <td>${r.qishu}</td>
+                <td><span class="parse-chip" style="background:${color}">${r.num.toString().padStart(2,'0')}</span></td>
+                <td>${r.zodiac}</td>
+                <td style="text-align:left;">${tagHtml}</td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+
+        box.innerHTML = html;
+
+    } catch (e) {
+        console.error(e);
+        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 加载失败：${e.message}<br><span style="color:#94a3b8;font-size:12px;">请确认 kj.json 与页面在同一目录，且格式为 {"data":[...]}</span></div>`;
+    }
 }
 
 // ==================== 核心逻辑 ====================
@@ -818,6 +940,10 @@ function updatePlaceholders() {
 }
 
 renderTags();
+(function(){
+    let t = document.getElementById('recent30Title');
+    if (t) t.textContent = `📊 最近${RECENT_LIMIT}期分类结果`;
+})();
 </script>
 </body>
 </html>
