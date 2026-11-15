@@ -550,7 +550,7 @@ async function loadRecent30(limit = RECENT_LIMIT) {
     let box = document.getElementById('recent30Box');
     let titleEl = document.getElementById('recent30Title');
     if (titleEl) titleEl.textContent = `📊 最近${limit}期分类结果`;
-    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在加载 kj.json ...</div>`;
+    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在加载数据...</div>`;
 
     try {
         let res = await fetch('kj.json?t=' + Date.now());
@@ -566,7 +566,7 @@ async function loadRecent30(limit = RECENT_LIMIT) {
         });
 
         if (flat.length === 0) {
-            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ kj.json 无数据</div>`;
+            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无开奖记录或数据异常</div>`;
             return;
         }
 
@@ -599,7 +599,7 @@ async function loadRecent30(limit = RECENT_LIMIT) {
         let recent = records.slice(0, limit);
 
         if (recent.length === 0) {
-            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无有效开奖记录</div>`;
+            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无有效开奖记录或数据异常</div>`;
             return;
         }
 
@@ -623,7 +623,7 @@ async function loadRecent30(limit = RECENT_LIMIT) {
 
     } catch (e) {
         console.error(e);
-        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 加载失败：${e.message}<br><span style="color:#94a3b8;font-size:12px;">请确认 kj.json 与页面在同一目录，且格式为 {"data":[...]}</span></div>`;
+        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 加载失败：${e.message}<br><span style="color:#94a3b8;font-size:12px;">请确认开奖记录文件与页面在同一目录，且格式为 {"data":[...]}</span></div>`;
     }
 }
 
