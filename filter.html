@@ -868,7 +868,8 @@ function runFilter() {
                 if (excludeZodiacs.size) exDesc.push([...excludeZodiacs].join(' '));
                 let onlyNumEx = [...excludeNums].filter(n => !excludeZodiacs.size || ![...excludeZodiacs].some(z => (ZODIAC_NUMS[z]||[]).includes(n)));
                 if (onlyNumEx.length) exDesc.push(onlyNumEx.sort((a,b)=>a-b).map(n=>n.toString().padStart(2,'0')).join(' '));
-                resultDiv.innerHTML = `❌ 剔除后无剩余号码（剔除：${exDesc.join(' + ')}）`;
+                // resultDiv.innerHTML = `❌ 剔除后无剩余号码（剔除：${exDesc.join(' + ')}）`;
+                resultDiv.innerHTML = `❌ 剔除后无剩余号码（剔除：${excludeRaw}）`;
                 resultDiv.classList.add('show');
                 return;
             }
