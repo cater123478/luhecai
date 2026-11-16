@@ -304,8 +304,8 @@ const TOU_CATEGORIES = {
 };
 // 大小维度
 const SIZE_CATEGORIES = {
-    "小": Array.from({length:24}, (_,i)=>i+1),
-    "大": Array.from({length:25}, (_,i)=>i+25)
+    "大": Array.from({length:25}, (_,i)=>i+25),
+    "小": Array.from({length:24}, (_,i)=>i+1)
 };
 // 单双维度
 const PARITY_CATEGORIES = {
@@ -460,20 +460,22 @@ function parseNums() {
     if (zodiacs.length > 0) {
         let rows = zodiacs.map(z => {
             let numsOfZ = ZODIAC_NUMS[z] || [];
-            let wuxingSet = [...new Set(numsOfZ.map(n => NUM_TO_WUXING[n]))].join('/');
-            let boseSet = [...new Set(numsOfZ.map(n => NUM_TO_BOSE[n]))].join('/');
+            let wuxingList = numsOfZ.map(n => NUM_TO_WUXING[n]).join('/');
+            let boseList = numsOfZ.map(n => NUM_TO_BOSE[n]).join('/');
+            let catList = kjGetTags(z, true).join('/');
             return `<tr>
                 <td><b style="font-size:15px;">${z}</b></td>
                 <td style="font-family:'Courier New',monospace;">${numsOfZ.map(n=>n.toString().padStart(2,'0')).join(' ')}</td>
-                <td>${wuxingSet}</td>
-                <td>${boseSet}</td>
+                <td>${wuxingList}</td>
+                <td>${boseList}</td>
+                <td style="font-size:12px;">${catList}</td>
             </tr>`;
         }).join('');
 
         html += `
             <div style="font-size:12px;color:#94a3b8;margin:10px 0 6px;">共识别 ${zodiacs.length} 个生肖</div>
             <table class="parse-table">
-                <thead><tr><th>生肖</th><th>对应号码</th><th>五行</th><th>波色</th></tr></thead>
+                <thead><tr><th>生肖</th><th>对应号码</th><th>五行</th><th>波色</th><th>生肖分类</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         `;
@@ -567,7 +569,7 @@ function kjGetCategory(z) {
     return '?';
 }
 
-function kjGetTags(zodiac) {
+function kjGetTags(zodiac, isShow) {
     let tags = [];
     tags.push(kjGetCategory(zodiac));
     if (['兔','马','猴','猪','牛','龙'].includes(zodiac)) tags.push('天');
@@ -578,6 +580,14 @@ function kjGetTags(zodiac) {
     else if (['猪','狗','鸡','猴','羊','马'].includes(zodiac)) tags.push('后');
     if (['猴','蛇','龙','兔','虎','鼠'].includes(zodiac)) tags.push('野');
     else if (['羊','马','牛','猪','狗','鸡'].includes(zodiac)) tags.push('家');
+        // 单肖 / 双肖：该生肖所有号码均为单数 → 单肖；均为双数 → 双肖
+    if (true) {
+        let numsOfZ = ZODIAC_NUMS[zodiac] || [];
+        if (numsOfZ.length > 0) {
+            if (numsOfZ.every(n => n % 2 === 1)) tags.push('单肖');
+            else if (numsOfZ.every(n => n % 2 === 0)) tags.push('双肖');
+        }
+    }
     return tags;
 }
 
@@ -621,9 +631,11 @@ async function loadRecent30(limit = RECENT_LIMIT) {
             let openNum = nums[nums.length - 1];
             let zodiac = KJ_ZODIAC_MAP[openNum] || '';
             if (!zodiac) return;
-            let tags = kjGetTags(zodiac);
+            let tags = kjGetTags(zodiac, false);
             tags.push(openNum <= 24 ? '小' : '大');
             tags.push(openNum % 2 === 1 ? '单' : '双');
+            tags.push(NUM_TO_WUXING[openNum] || '?');
+            // tags.push(NUM_TO_BOSE[openNum] || '?');
 
             records.push({
                 qishu: qishu,
