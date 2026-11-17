@@ -172,6 +172,8 @@
         display: inline-block; padding: 1px 8px; border-radius: 10px;
         font-size: 12px; color: #fff; font-weight: 500;
     }
+    #comboStatToggle:checked + #comboStatSwitch { background: #7b1fa2; }
+    #comboStatToggle:checked + #comboStatSwitch > span { left: 18px; }
 </style>
 </head>
 <body>
@@ -219,7 +221,16 @@
 
     <!-- 号码属性解析 -->
     <div class="card" style="margin-top: 14px;">
-        <div class="card-title">🧩 号码/生肖属性解析（输入任意符号分隔）</div>
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>🧩 号码/生肖属性解析（输入任意符号分隔）</span>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#475569; cursor:pointer; font-weight:500;">
+                 <input type="checkbox" id="comboStatToggle" onchange="toggleComboStatMode(this)" style="display:none;">
+                <span id="comboStatSwitch" style="width:36px; height:20px; background:#cbd5e1; border-radius:20px; position:relative; transition:background .2s; display:inline-block;">
+                    <span style="position:absolute; top:2px; left:2px; width:16px; height:16px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.2);"></span>
+                </span>
+                <span title="组内空格/加号/顿号分隔；组件之间逗号/分号等分隔">组合统计</span>
+            </label>
+        </div>
         <div class="num-input-row">
             <span class="num-input-prefix">🔎</span>
             <input type="text" id="parseInput" class="num-input-box" placeholder="如：1,3 5 或 马 蛇 龙 或混合输入" oninput="toggleClearBtn(this)">
@@ -268,7 +279,19 @@ const CATEGORIES = {
     "天肖": ["兔", "马", "猴", "猪", "牛", "龙"],
     "地肖": ["蛇", "羊", "鸡", "狗", "鼠", "虎"],
     "家禽": ["羊", "马", "牛", "猪", "狗", "鸡"],
-    "野兽": ["猴", "蛇", "龙", "兔", "虎", "鼠"]
+    "野兽": ["猴", "蛇", "龙", "兔", "虎", "鼠"],
+    // 单字别名
+    "肉": ["虎", "蛇", "龙", "狗"],
+    "菜": ["猪", "鼠", "鸡", "猴"],
+    "草": ["牛", "羊", "马", "兔"],
+    "前": ["鼠", "牛", "虎", "兔", "龙", "蛇"],
+    "后": ["猪", "狗", "鸡", "猴", "羊", "马"],
+    "左": ["牛", "鼠", "鸡", "猴", "蛇", "龙"],
+    "右": ["猪", "狗", "兔", "虎", "羊", "马"],
+    "天": ["兔", "马", "猴", "猪", "牛", "龙"],
+    "地": ["蛇", "羊", "鸡", "狗", "鼠", "虎"],
+    "家": ["羊", "马", "牛", "猪", "狗", "鸡"],
+    "野": ["猴", "蛇", "龙", "兔", "虎", "鼠"]
 };
 
 const ZODIAC_NUMS = {
@@ -399,8 +422,174 @@ function clearInput(btn) {
     }
 }
 
+// ==================== 组合统计模式 ====================
+let comboStatMode = false;
+
+function toggleComboStatMode(cb) {
+    comboStatMode = cb.checked;
+
+    let sw = document.getElementById('comboStatSwitch');
+    let knob = sw ? sw.querySelector('span') : null;
+    if (sw && knob) {
+        if (cb.checked) {
+            sw.style.background = '#7b1fa2';
+            knob.style.left = '18px';
+        } else {
+            sw.style.background = '#cbd5e1';
+            knob.style.left = '2px';
+        }
+    }
+
+    document.getElementById('parseResult').innerHTML = '';
+}
+
+// 安全分隔符拆组
+function splitComboGroups(raw) {
+    return raw.split(/[;；\n\r|，,]+/).map(s => s.trim()).filter(Boolean);
+}
+// 组内分类词拆词（空格/加号/顿号）
+function splitComboWords(cond) {
+    return cond.split(/[\s+、]+/).map(w => w.trim()).filter(Boolean);
+}
+// 分类词 → 生肖集合
+function getZodiacSetByWord(word) {
+    if (CATEGORIES[word]) return new Set(CATEGORIES[word]);
+    return null;
+}
+
+function parseComboStats() {
+    let raw = document.getElementById('parseInput').value.trim();
+    let out = document.getElementById('parseResult');
+
+    if (!raw) {
+        out.innerHTML = `<div style="color:#94a3b8;font-size:13px;">请输入组合条件，每行一组，如：肉菜 右肖 前肖</div>`;
+        return;
+    }
+
+    let groups = splitComboGroups(raw);
+    if (groups.length === 0) {
+        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 未识别到有效组合</div>`;
+        return;
+    }
+
+    // 统计：生肖 → { count, sources:Set }
+    let stat = {};
+    let groupDetails = []; // 每组明细
+    let validCount = 0;
+    let emptyCount = 0;
+
+    groups.forEach((cond, idx) => {
+        let words = splitComboWords(cond);
+        if (words.length === 0) return;
+
+        // 组内交集
+        let set = null;
+        let badWord = null;
+        for (let w of words) {
+            let s = getZodiacSetByWord(w);
+            if (!s) { badWord = w; break; }
+            set = set === null ? s : new Set([...set].filter(z => s.has(z)));
+        }
+
+        if (badWord) {
+            groupDetails.push({ idx: idx + 1, cond, result: [], note: `未知分类词：${badWord}` });
+            emptyCount++;
+            return;
+        }
+
+        let result = set ? [...set] : [];
+        if (result.length === 0) {
+            groupDetails.push({ idx: idx + 1, cond, result: [], note: '无符合' });
+            emptyCount++;
+            return;
+        }
+
+        validCount++;
+        groupDetails.push({ idx: idx + 1, cond, result, note: '' });
+
+        result.forEach(z => {
+            if (!stat[z]) stat[z] = { count: 0, sources: new Set() };
+            stat[z].count++;
+            stat[z].sources.add(cond);
+        });
+    });
+
+    let list = Object.keys(stat).map(z => ({
+        zodiac: z,
+        count: stat[z].count,
+        sources: [...stat[z].sources]
+    }));
+
+    if (list.length === 0) {
+        out.innerHTML = `<div style="color:#ef4444;font-size:13px;">❌ 所有组合均无符合生肖</div>`;
+        return;
+    }
+
+    // 固定生肖顺序辅助排序
+    const ZODIAC_ORDER = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+    list.sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return ZODIAC_ORDER.indexOf(a.zodiac) - ZODIAC_ORDER.indexOf(b.zodiac);
+    });
+
+    let rows = list.map(item => {
+        let srcHtml = item.sources.map(s => `<span class="num-chip" style="margin:1px 2px;">${s}</span>`).join(' ');
+        return `<tr>
+            <td><b style="font-size:15px;">${item.zodiac}</b></td>
+            <td>${item.count} 次</td>
+            <td style="text-align:left;">${srcHtml}</td>
+        </tr>`;
+    }).join('');
+
+    let detailHtml = groupDetails.map(g => {
+        let resText = g.result.length ? g.result.join('，') : (g.note || '无符合');
+        let color = g.result.length ? '#0f172a' : '#ef4444';
+        return `<div style="font-size:12px; padding:4px 0; border-bottom:1px dashed #eef2f7; color:${color};">
+            第${g.idx}组：${g.cond} → ${resText}
+        </div>`;
+    }).join('');
+
+    out.innerHTML = `
+        <div style="font-size:12px;color:#94a3b8;margin:6px 0;">
+            共 ${groups.length} 组，有效 ${validCount} 组，无符合 ${emptyCount} 组，命中 ${list.length} 个生肖
+        </div>
+        <table class="parse-table">
+            <thead><tr>
+                <th style="white-space:nowrap;">生肖</th>
+                <th style="white-space:nowrap;">出现次数</th>
+                <th style="white-space:nowrap;">命中条件</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="margin-top:12px;">
+            <button class="detail-toggle" onclick="toggleComboDetail(this)">
+                <span>组合明细</span><span class="arrow">▾</span>
+            </button>
+            <div class="detail-panel" style="font-size:12px;">
+                ${detailHtml}
+            </div>
+        </div>
+    `;
+}
+
+function toggleComboDetail(btn) {
+    let panel = btn.nextElementSibling;
+    let arrow = btn.querySelector('.arrow');
+    panel.classList.toggle('show');
+    if (panel.classList.contains('show')) {
+        arrow.textContent = '▴';
+        btn.querySelector('span:first-child').textContent = '收起明细';
+    } else {
+        arrow.textContent = '▾';
+        btn.querySelector('span:first-child').textContent = '组合明细';
+    }
+}
 // ==================== 号码解析 ====================
 function parseNums() {
+    if (comboStatMode) {
+        parseComboStats();
+        return;
+    }
     let raw = document.getElementById('parseInput').value.trim();
     let out = document.getElementById('parseResult');
 
