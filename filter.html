@@ -624,18 +624,20 @@ function parseNums() {
             let w = NUM_TO_WUXING[n] || '?';
             let color = getColor(n);
             let boseName = getBoseName(n);
+            let catList = z !== '?' ? kjGetTags(z).join('/') : '';
             return `<tr>
                 <td><span class="parse-chip" style="background:${color}">${n.toString().padStart(2,'0')}</span></td>
                 <td>${z}</td>
                 <td>${w}</td>
                 <td><span class="bose-badge" style="background:${color}">${boseName}</span></td>
+                <td style="font-size:12px; max-width:180px; word-break:break-all;">${catList}</td>
             </tr>`;
         }).join('');
 
         html += `
             <div style="font-size:12px;color:#94a3b8;margin:6px 0;">共识别 ${nums.length} 个号码</div>
             <table class="parse-table">
-                <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th></tr></thead>
+                <thead><tr><th>号码</th><th>生肖</th><th>五行</th><th>波色</th><th>分类标签</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         `;
@@ -660,7 +662,7 @@ function parseNums() {
         html += `
             <div style="font-size:12px;color:#94a3b8;margin:10px 0 6px;">共识别 ${zodiacs.length} 个生肖</div>
             <table class="parse-table">
-                <thead><tr><th>生肖</th><th>对应号码</th><th>五行</th><th>波色</th><th>生肖分类</th></tr></thead>
+                <thead><tr><th style="white-space: nowrap">生肖</th><th>对应号码</th><th>五行</th><th>波色</th><th>生肖分类</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         `;
@@ -1066,8 +1068,9 @@ function runFilter() {
     finalNums.forEach(n => {
         let z = NUM_TO_ZODIAC[n] || '?';
         let w = NUM_TO_WUXING[n] || '?';
-        let b = NUM_TO_BOSE[n] || '?';
-        details.push(`<span style="font-weight:bold;color:${getColor(n)}">${n.toString().padStart(2, '0')}${z}</span><span style="color:#666;font-size:12px;">/${w}/${b}</span>`);
+        // let b = NUM_TO_BOSE[n] || '?';
+        let cat = z !== '?' ? kjGetCategory(z) : '?';
+        details.push(`<span style="font-weight:bold;color:${getColor(n)}">${n.toString().padStart(2, '0')}${z}</span><span style="color:#666;font-size:12px;">/${w}/${cat}</span>`);
     });
 
     let conditionStr = [];
