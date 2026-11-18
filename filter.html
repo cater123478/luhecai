@@ -1022,7 +1022,7 @@ function runFilter() {
         resultDiv.classList.add('show');
         return;
     }
-        // ★ 剔除逻辑：根据剔除框里的任意生肖/号码过滤最终结果
+    // ==================== 剔除逻辑（支持 @尾数） ====================
     let excludeRaw = (document.getElementById('excludeInput')?.value || '').trim();
     let excludeNums = new Set();
     let excludeZodiacs = new Set();
@@ -1030,21 +1030,39 @@ function runFilter() {
     if (excludeRaw) {
         const ZODIAC_CHARS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
 
-        // 剔除号码
-        let mNum = excludeRaw.match(/\d{1,2}/g) || [];
-        mNum.forEach(m => {
+        // 按 @ 拆前后
+        let parts = excludeRaw.split('@');
+        let front = parts[0] || '';
+        let back = parts.slice(1).join('') || '';
+
+        // ---- @ 前：生肖 + 明写号码 ----
+        for (let ch of front) {
+            if (ZODIAC_CHARS.includes(ch)) excludeZodiacs.add(ch);
+        }
+        let frontNums = front.match(/\d{1,2}/g) || [];
+        frontNums.forEach(m => {
             let n = parseInt(m);
             if (n >= 1 && n <= 49) excludeNums.add(n);
         });
 
-        // 剔出生肖
-        for (let ch of excludeRaw) {
-            if (ZODIAC_CHARS.includes(ch)) excludeZodiacs.add(ch);
-        }
-
         // 生肖 → 号码
         excludeZodiacs.forEach(z => {
             (ZODIAC_NUMS[z] || []).forEach(n => excludeNums.add(n));
+        });
+
+        // ---- @ 后：逐位数字当尾数 ----
+        let tailDigits = [];
+        let tailMatches = back.match(/\d/g) || [];
+        tailMatches.forEach(d => {
+            let v = parseInt(d);
+            if (!isNaN(v)) tailDigits.push(v);
+        });
+        tailDigits = [...new Set(tailDigits)];
+
+        tailDigits.forEach(d => {
+            for (let n = 1; n <= 49; n++) {
+                if (n % 10 === d) excludeNums.add(n);
+            }
         });
 
         if (excludeNums.size > 0) {
