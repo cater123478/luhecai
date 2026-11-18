@@ -1086,9 +1086,9 @@ function runFilter() {
     finalNums.forEach(n => {
         let z = NUM_TO_ZODIAC[n] || '?';
         let w = NUM_TO_WUXING[n] || '?';
-        // let b = NUM_TO_BOSE[n] || '?';
+        let b = NUM_TO_BOSE[n] || '?';
         let cat = z !== '?' ? kjGetCategory(z) : '?';
-        details.push(`<span style="font-weight:bold;color:${getColor(n)}">${n.toString().padStart(2, '0')}${z}</span><span style="color:#666;font-size:12px;">/${w}/${cat}</span>`);
+        details.push(`<span style="font-weight:bold;color:${getColor(n)}">${n.toString().padStart(2, '0')}${z}</span><span style="color:#666;font-size:12px;">/${w}/${cat}/${b}</span>`);
     });
 
     let conditionStr = [];
