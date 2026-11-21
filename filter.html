@@ -438,7 +438,7 @@ function calcDimStats(records) {
 function fmtDimStats(dims) {
     function pct(obj) {
         let total = Object.values(obj).reduce((a,b)=>a+b,0) || 1;
-        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total*100)}%`).join(' / ');
+        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total)}`).join(' / ');
     }
     return [
         `${pct(dims.td)}`,`${pct(dims.lr)}`,`${pct(dims.fb)}`,`${pct(dims.yj)}`,
