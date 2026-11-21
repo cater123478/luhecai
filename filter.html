@@ -188,7 +188,15 @@
 
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div class="card-title" style="margin: 0;">🔢 输入号码/生肖（可选，交集）</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div class="card-title" style="margin: 0;">🔢 输入号码/生肖（交集）</div>
+                <div style="display:inline-flex; align-items:center; gap:5px;">
+                    <input type="checkbox" id="inputEnable" checked style="display:none;">
+                    <span id="inputSwitch" onclick="toggleInputEnable(event)" style="width:36px; height:20px; background:#7b1fa2; border-radius:20px; position:relative; transition:background .2s; display:inline-block;">
+                        <span style="position:absolute; top:2px; left:18px; width:16px; height:16px; background:#fff; border-radius:50%; transition:left .2s;"></span>
+                    </span>
+                </div>
+            </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <button onclick="addNumInput()" title="添加一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#7b1fa2,#4a148c); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(123,31,162,0.35);">+</button>
                 <button onclick="removeNumInput()" title="删除一行" style="width: 30px; height: 30px; border-radius: 50%; border: none; background: linear-gradient(135deg,#ef4444,#dc2626); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow:0 2px 6px rgba(220,38,38,0.35);">×</button>
@@ -203,7 +211,15 @@
         </div>
 
         <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
-            <div class="card-title" style="margin-bottom:8px;">🚫 剔除号码/生肖</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <div class="card-title" style="margin:0;">🚫 剔除号码/生肖</div>
+                <div style="display:inline-flex; align-items:center; gap:5px;">
+                    <input type="checkbox" id="excludeEnable" checked style="display:none;">
+                    <span id="excludeSwitch" onclick="toggleExcludeEnable(event)" style="width:36px; height:20px; background:#7b1fa2; border-radius:20px; position:relative; transition:background .2s; display:inline-block;">
+                        <span style="position:absolute; top:2px; left:18px; width:16px; height:16px; background:#fff; border-radius:50%; transition:left .2s;"></span>
+                    </span>
+                </div>
+            </div>
             <div class="num-input-row">
                 <span class="num-input-prefix">−</span>
                 <input type="text" id="excludeInput" class="num-input-box" placeholder="如：马 蛇 或 1,7,13 或混合或@137尾，支持任意符号" oninput="toggleClearBtn(this)">
@@ -462,6 +478,26 @@ function clearInput(btn) {
     if (input.id === 'parseInput') {
         document.getElementById('parseResult').innerHTML = '';
     }
+}
+function toggleInputEnable(e) {
+    if (e) e.stopPropagation();
+    let cb = document.getElementById('inputEnable');
+    cb.checked = !cb.checked;
+    syncSwitch('inputSwitch', cb.checked);
+}
+
+function toggleExcludeEnable(e) {
+    if (e) e.stopPropagation();
+    let cb = document.getElementById('excludeEnable');
+    cb.checked = !cb.checked;
+    syncSwitch('excludeSwitch', cb.checked);
+}
+function syncSwitch(id, on) {
+    let sw = document.getElementById(id);
+    if (!sw) return;
+    let knob = sw.querySelector('span');
+    sw.style.background = on ? '#7b1fa2' : '#cbd5e1';
+    if (knob) knob.style.left = on ? '18px' : '2px';
 }
 function toggleRecent30() {
     let box = document.getElementById('recent30Box');
@@ -1214,34 +1250,40 @@ function runFilter() {
     let parityTags = tags.filter(t => PARITY_CATEGORIES[t] !== undefined);
 
     // 生肖字表
-    const ZODIAC_CHARS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+    const ZODIAC_CHARS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
 
     let inputSets = [];          // 号码组
     let inputZodiacSets = [];    // 生肖组
+    let inputEnabled = document.getElementById('inputEnable')?.checked ?? true;
+    if (inputEnabled) {
+        document.querySelectorAll('.num-input-box').forEach(el => {
+            if (el.id === 'parseInput' || el.id === 'excludeInput') return;
+            let val = el.value.trim();
+            if (!val) return;
 
-    document.querySelectorAll('.num-input-box').forEach(el => {
-        if (el.id === 'parseInput' || el.id === 'excludeInput') return;
-        let val = el.value.trim();
-        if (!val) return;
+            // 提取号码
+            let nums = new Set();
+            let matches = val.match(/\d{1,2}/g);
+            if (matches) {
+                matches.forEach(m => {
+                    let n = parseInt(m);
+                    if (n >= 1 && n <= 49) nums.add(n);
+                });
+            }
+            if (nums.size > 0) inputSets.push(nums);
 
-        // 提取号码
-        let nums = new Set();
-        let matches = val.match(/\d{1,2}/g);
-        if (matches) {
-            matches.forEach(m => {
-                let n = parseInt(m);
-                if (n >= 1 && n <= 49) nums.add(n);
-            });
-        }
-        if (nums.size > 0) inputSets.push(nums);
-
-        // 提取生肖
-        let zset = new Set();
-        for (let ch of val) {
-            if (ZODIAC_CHARS.includes(ch)) zset.add(ch);
-        }
-        if (zset.size > 0) inputZodiacSets.push(zset);
-    });
+            // 提取生肖
+            let zset = new Set();
+            for (let ch of val) {
+                if (ZODIAC_CHARS.includes(ch)) zset.add(ch);
+            }
+            if (zset.size > 0) inputZodiacSets.push(zset);
+        });
+    }
+    if (!inputEnabled) {
+        inputSets = [];
+        inputZodiacSets = [];
+    }
 
     let inputNumsIntersect = null;
     for (let set of inputSets) {
@@ -1331,13 +1373,13 @@ function runFilter() {
         pools.push(s);
         parityTags.forEach(tag => conditionDetails.push({ label: tag, value: PARITY_CATEGORIES[tag].map(n => n.toString().padStart(2,'0')).join(' ') }));
     }
-    if (inputNumsIntersect && inputNumsIntersect.size > 0) {
+    if (inputEnabled && inputNumsIntersect && inputNumsIntersect.size > 0) {
         pools.push(inputNumsIntersect);
         conditionDetails.push({ label: '输入号码交集', value: [...inputNumsIntersect].sort((a,b)=>a-b).map(n => n.toString().padStart(2,'0')).join(' ') });
     }
 
     // ★ 输入生肖交集 → 转号码池
-    if (inputZodiacIntersect && inputZodiacIntersect.size > 0) {
+    if (inputEnabled && inputZodiacIntersect && inputZodiacIntersect.size > 0) {
         let zPool = new Set();
         for (let z of inputZodiacIntersect) {
             if (ZODIAC_NUMS[z]) ZODIAC_NUMS[z].forEach(n => zPool.add(n));
@@ -1359,7 +1401,8 @@ function runFilter() {
         return;
     }
     // ==================== 剔除逻辑（支持 @尾数） ====================
-    let excludeRaw = (document.getElementById('excludeInput')?.value || '').trim();
+    let excludeEnabled = document.getElementById('excludeEnable')?.checked ?? true;
+    let excludeRaw = excludeEnabled ? (document.getElementById('excludeInput')?.value || '').trim() : '';
     let excludeNums = new Set();
     let excludeZodiacs = new Set();
 
