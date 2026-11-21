@@ -404,7 +404,117 @@ function openHelp(type) {
     document.getElementById('helpTitle').textContent = title;
     document.getElementById('helpBody').innerHTML = rowsHtml;
     document.getElementById('helpMask').classList.add('show');
+    document.getElementById('helpBody').innerHTML = rowsHtml + `
+    <div id="helpStats" style="margin-top:12px;padding-top:10px;border-top:1px dashed #e2e8f0;font-size:12px;color:#475569;line-height:1.9;">
+        <div>⏳ 统计加载中...</div>
+    </div>
+`;
+    loadHelpStats();
 }
+
+function calcDimStats(records) {
+    let dims = {
+        td:{天:0,地:0}, lr:{左:0,右:0}, fb:{前:0,后:0},
+        yj:{野:0,家:0}, mcc:{肉:0,菜:0,草:0},
+        size:{大:0,小:0}, parity:{单:0,双:0},bose: {红:0, 蓝:0, 绿:0}
+    };
+    records.forEach(r => {
+        let z = r.zodiac;
+        let n = r.num;
+        let td = ['兔','马','猴','猪','牛','龙'].includes(z) ? '天' : '地';
+        let lr = ['牛','鼠','鸡','猴','蛇','龙'].includes(z) ? '左' : '右';
+        let fb = ['鼠','牛','虎','兔','龙','蛇'].includes(z) ? '前' : '后';
+        let yj = ['猴','蛇','龙','兔','虎','鼠'].includes(z) ? '野' : '家';
+        let mcc = ['虎','蛇','龙','狗'].includes(z) ? '肉' : (['猪','鼠','鸡','猴'].includes(z) ? '菜' : '草');
+        let size = n <= 24 ? '小' : '大';
+        let parity = n % 2 === 1 ? '单' : '双';
+        let bose = ['红波'].includes(getBoseName(n)) ? '红' : (getBoseName(n) === '蓝波' ? '蓝' : '绿');
+
+        dims.td[td]++; dims.lr[lr]++; dims.fb[fb]++; dims.yj[yj]++; dims.mcc[mcc]++;
+        dims.size[size]++; dims.parity[parity]++;dims.bose[bose]++;
+    });
+    return dims;
+}
+function fmtDimStats(dims) {
+    function pct(obj) {
+        let total = Object.values(obj).reduce((a,b)=>a+b,0) || 1;
+        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total*100)}%`).join(' / ');
+    }
+    return [
+        `${pct(dims.td)}`,`${pct(dims.lr)}`,`${pct(dims.fb)}`,`${pct(dims.yj)}`,
+        `${pct(dims.mcc)}`,`${pct(dims.size)}`,`${pct(dims.parity)}`,`${pct(dims.bose)}`
+    ].join('　');
+}
+let helpStatsCache = null;        // 缓存统计结果
+let helpStatsLoading = false;     // 防止重复请求
+
+async function loadHelpStats() {
+    let el = document.getElementById('helpStats');
+    if (!el) return;
+
+    // 已有缓存 → 直接渲染
+    if (helpStatsCache) {
+        renderHelpStats(el, helpStatsCache);
+        return;
+    }
+
+    // 正在请求 → 显示加载中，避免重复
+    if (helpStatsLoading) {
+        el.innerHTML = `<div>⏳ 统计加载中...</div>`;
+        return;
+    }
+
+    helpStatsLoading = true;
+    el.innerHTML = `<div>⏳ 统计加载中...</div>`;
+
+    try {
+        let res = await fetch('kj.json?t=' + Date.now());
+        if (!res.ok) throw new Error('读取失败');
+        let json = await res.json();
+        let raw = json.data || [];
+        let flat = [];
+        raw.forEach(i => Array.isArray(i) ? flat.push(...i) : flat.push(i));
+
+        // 取最新年份
+        let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
+        let maxYear = years.length ? Math.max(...years) : 0;
+        let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
+
+        let records = [];
+        list.forEach(item => {
+            let qishu = String(item.qishu || '').trim();
+            let numStr = String(item.num || '').trim();
+            if (!qishu || !numStr) return;
+            let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
+            if (nums.length < 7) return;
+            let openNum = nums[nums.length - 1];
+            let zodiac = KJ_ZODIAC_MAP[openNum] || '';
+            if (!zodiac) return;
+            records.push({ qishu, num: openNum, zodiac });
+        });
+
+        records.sort((a,b) => (parseInt(b.qishu)||0) - (parseInt(a.qishu)||0));
+
+        let allStats = calcDimStats(records);
+        let recent10 = calcDimStats(records.slice(0, 10));
+
+        helpStatsCache = { allStats, recent10, year: maxYear, count: records.length };
+        renderHelpStats(el, helpStatsCache);
+    } catch (e) {
+        el.innerHTML = `<div style="color:#ef4444;">❌ 统计加载失败：${e.message}</div>`;
+    } finally {
+        helpStatsLoading = false;
+    }
+}
+
+function renderHelpStats(el, cache) {
+    el.innerHTML = `
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">最新年份 ${cache.year || '—'}，共 ${cache.count} 期</div>
+        <div><b>历史全部：</b>${fmtDimStats(cache.allStats)}</div>
+        <div style="margin-top:4px;"><b>最近10期：</b>${fmtDimStats(cache.recent10)}</div>
+    `;
+}
+
 function closeHelp() { document.getElementById('helpMask').classList.remove('show'); }
 
 // ==================== 输入框内部快速清空 ====================
