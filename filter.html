@@ -222,7 +222,7 @@
     <!-- 号码属性解析 -->
     <div class="card" style="margin-top: 14px;">
                 <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>🧩 号码/生肖属性解析（输入任意符号分隔）</span>
+            <span>🧩 号码/生肖属性解析（任意符号分隔）</span>
             <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#475569; cursor:pointer; font-weight:500;">
                  <input type="checkbox" id="comboStatToggle" onchange="toggleComboStatMode(this)" style="display:none;">
                 <span id="comboStatSwitch" style="width:36px; height:20px; background:#cbd5e1; border-radius:20px; position:relative; transition:background .2s; display:inline-block;">
@@ -248,6 +248,7 @@
                 <button id="recent30ToggleBtn" onclick="toggleRecent30()" style="padding:6px 12px; border-radius:20px; border:1px solid #e2e8f0; background: #cac8c8; color:#475569; font-size:13px; cursor:pointer;">收起</button>
             </div>
         </div>
+        <div id="recent30Stats" style="font-size:12.5px; line-height:1.9; color:#475569; margin-bottom:8px;"></div>
         <div id="recent30Box" style="font-size:13px; line-height:1.9;">
             <div style="color:#94a3b8; font-size:13px; padding:8px 0;">点击“加载/刷新”查看最近30期分类结果</div>
         </div>
@@ -404,18 +405,12 @@ function openHelp(type) {
     document.getElementById('helpTitle').textContent = title;
     document.getElementById('helpBody').innerHTML = rowsHtml;
     document.getElementById('helpMask').classList.add('show');
-    document.getElementById('helpBody').innerHTML = rowsHtml + `
-    <div id="helpStats" style="margin-top:12px;padding-top:10px;border-top:1px dashed #e2e8f0;font-size:12px;color:#475569;line-height:1.9;">
-        <div>⏳ 统计加载中...</div>
-    </div>
-`;
-    loadHelpStats();
 }
 
 function calcDimStats(records) {
     let dims = {
         td:{天:0,地:0}, lr:{左:0,右:0}, fb:{前:0,后:0},
-        yj:{野:0,家:0}, mcc:{肉:0,菜:0,草:0},
+        yj:{家:0,野:0}, mcc:{肉:0,菜:0,草:0},
         size:{大:0,小:0}, parity:{单:0,双:0},bose: {红:0, 蓝:0, 绿:0}
     };
     records.forEach(r => {
@@ -438,81 +433,12 @@ function calcDimStats(records) {
 function fmtDimStats(dims) {
     function pct(obj) {
         let total = Object.values(obj).reduce((a,b)=>a+b,0) || 1;
-        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total)}`).join(' / ');
+        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total*100)}%`).join('/');
     }
     return [
         `${pct(dims.td)}`,`${pct(dims.lr)}`,`${pct(dims.fb)}`,`${pct(dims.yj)}`,
         `${pct(dims.mcc)}`,`${pct(dims.size)}`,`${pct(dims.parity)}`,`${pct(dims.bose)}`
     ].join('　');
-}
-let helpStatsCache = null;        // 缓存统计结果
-let helpStatsLoading = false;     // 防止重复请求
-
-async function loadHelpStats() {
-    let el = document.getElementById('helpStats');
-    if (!el) return;
-
-    // 已有缓存 → 直接渲染
-    if (helpStatsCache) {
-        renderHelpStats(el, helpStatsCache);
-        return;
-    }
-
-    // 正在请求 → 显示加载中，避免重复
-    if (helpStatsLoading) {
-        el.innerHTML = `<div>⏳ 统计加载中...</div>`;
-        return;
-    }
-
-    helpStatsLoading = true;
-    el.innerHTML = `<div>⏳ 统计加载中...</div>`;
-
-    try {
-        let res = await fetch('kj.json?t=' + Date.now());
-        if (!res.ok) throw new Error('读取失败');
-        let json = await res.json();
-        let raw = json.data || [];
-        let flat = [];
-        raw.forEach(i => Array.isArray(i) ? flat.push(...i) : flat.push(i));
-
-        // 取最新年份
-        let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
-        let maxYear = years.length ? Math.max(...years) : 0;
-        let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
-
-        let records = [];
-        list.forEach(item => {
-            let qishu = String(item.qishu || '').trim();
-            let numStr = String(item.num || '').trim();
-            if (!qishu || !numStr) return;
-            let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
-            if (nums.length < 7) return;
-            let openNum = nums[nums.length - 1];
-            let zodiac = KJ_ZODIAC_MAP[openNum] || '';
-            if (!zodiac) return;
-            records.push({ qishu, num: openNum, zodiac });
-        });
-
-        records.sort((a,b) => (parseInt(b.qishu)||0) - (parseInt(a.qishu)||0));
-
-        let allStats = calcDimStats(records);
-        let recent10 = calcDimStats(records.slice(0, 10));
-
-        helpStatsCache = { allStats, recent10, year: maxYear, count: records.length };
-        renderHelpStats(el, helpStatsCache);
-    } catch (e) {
-        el.innerHTML = `<div style="color:#ef4444;">❌ 统计加载失败：${e.message}</div>`;
-    } finally {
-        helpStatsLoading = false;
-    }
-}
-
-function renderHelpStats(el, cache) {
-    el.innerHTML = `
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">最新年份 ${cache.year || '—'}，共 ${cache.count} 期</div>
-        <div><b>历史全部：</b>${fmtDimStats(cache.allStats)}</div>
-        <div style="margin-top:4px;"><b>最近10期：</b>${fmtDimStats(cache.recent10)}</div>
-    `;
 }
 
 function closeHelp() { document.getElementById('helpMask').classList.remove('show'); }
@@ -539,16 +465,14 @@ function clearInput(btn) {
 }
 function toggleRecent30() {
     let box = document.getElementById('recent30Box');
+    let stats = document.getElementById('recent30Stats');
     let btn = document.getElementById('recent30ToggleBtn');
     if (!box || !btn) return;
 
-    if (box.style.display === 'none') {
-        box.style.display = '';
-        btn.textContent = '收起';
-    } else {
-        box.style.display = 'none';
-        btn.textContent = '展开';
-    }
+    let isHidden = box.style.display === 'none';
+    box.style.display = isHidden ? '' : 'none';
+    if (stats) stats.style.display = isHidden ? '' : 'none';
+    btn.textContent = isHidden ? '收起' : '展开';
 }
 // ==================== 组合统计模式 ====================
 let comboStatMode = false;
@@ -913,91 +837,99 @@ function kjGetTags(zodiac, isShow) {
     return tags;
 }
 
-async function loadRecent30(limit = RECENT_LIMIT) {
+let recent30Cache = null; // { records, maxYear, count }
+async function loadRecent30(limit = RECENT_LIMIT, force = false) {
     let box = document.getElementById('recent30Box');
     let titleEl = document.getElementById('recent30Title');
     if (titleEl) titleEl.textContent = `📊 最近${limit}期分类结果`;
-    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在加载数据...</div>`;
+    let records, maxYear, count;
+    // ===== 有缓存且不强制刷新 → 直接用 =====
+    if (recent30Cache && !force) {
+        records = recent30Cache.records;
+        maxYear = recent30Cache.maxYear;
+        count = recent30Cache.count;
+    } else {
+        box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在加载数据...</div>`;
+        try {
+            let res = await fetch('kj.json?t=' + Date.now());
+            if (!res.ok) throw new Error('文件不存在或无法读取');
+            let json = await res.json();
 
-    try {
-        let res = await fetch('kj.json?t=' + Date.now());
-        if (!res.ok) throw new Error('文件不存在或无法读取');
-        let json = await res.json();
-
-        let raw = json.data || [];
-        // 拍平
-        let flat = [];
-        raw.forEach(item => {
-            if (Array.isArray(item)) flat.push(...item);
-            else flat.push(item);
-        });
-
-        if (flat.length === 0) {
-            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无开奖记录或数据异常</div>`;
-            return;
-        }
-
-        // 取最新年份
-        let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
-        let maxYear = years.length ? Math.max(...years) : 0;
-        let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
-
-        // 整理每期：期号、特码、生肖、标签
-        let records = [];
-        list.forEach(item => {
-            let qishu = String(item.qishu || '').trim();
-            let numStr = String(item.num || '').trim();
-            if (!qishu || !numStr) return;
-            let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
-            if (nums.length < 7) return;
-            let openNum = nums[nums.length - 1];
-            let zodiac = KJ_ZODIAC_MAP[openNum] || '';
-            if (!zodiac) return;
-            let tags = kjGetTags(zodiac, false);
-            tags.push(openNum <= 24 ? '小' : '大');
-            tags.push(openNum % 2 === 1 ? '单' : '双');
-            tags.push(NUM_TO_WUXING[openNum] || '?');
-            // tags.push(NUM_TO_BOSE[openNum] || '?');
-
-            records.push({
-                qishu: qishu,
-                num: openNum,
-                zodiac: zodiac,
-                tags: tags
+            let raw = json.data || [];
+            let flat = [];
+            raw.forEach(item => {
+                if (Array.isArray(item)) flat.push(...item);
+                else flat.push(item);
             });
-        });
 
-        // 期号数字排序，取最近30期（期号大的在前）
-        records.sort((a, b) => (parseInt(b.qishu) || 0) - (parseInt(a.qishu) || 0));
-        let recent = records.slice(0, limit);
+            if (flat.length === 0) {
+                box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无开奖记录或数据异常</div>`;
+                return;
+            }
 
-        if (recent.length === 0) {
-            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无有效开奖记录或数据异常</div>`;
+            let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
+            maxYear = years.length ? Math.max(...years) : 0;
+            let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
+
+            records = [];
+            list.forEach(item => {
+                let qishu = String(item.qishu || '').trim();
+                let numStr = String(item.num || '').trim();
+                if (!qishu || !numStr) return;
+                let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
+                if (nums.length < 7) return;
+                let openNum = nums[nums.length - 1];
+                let zodiac = KJ_ZODIAC_MAP[openNum] || '';
+                if (!zodiac) return;
+                let tags = kjGetTags(zodiac, false);
+                tags.push(openNum <= 24 ? '小' : '大');
+                tags.push(openNum % 2 === 1 ? '单' : '双');
+                tags.push(NUM_TO_WUXING[openNum] || '?');
+
+                records.push({ qishu, num: openNum, zodiac, tags });
+            });
+            records.sort((a, b) => (parseInt(b.qishu) || 0) - (parseInt(a.qishu) || 0));
+            count = records.length;
+            recent30Cache = { records, maxYear, count };
+        } catch (e) {
+            console.error(e);
+            box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 加载失败：${e.message}<br><span style="color:#94a3b8;font-size:12px;">请确认开奖记录文件与页面在同一目录，且格式为 {"data":[...]}</span></div>`;
             return;
         }
+    }
 
-        let html = ''; //`<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">共 ${recent.length} 期（最新年份 ${maxYear || '—'}）</div>`;
-        html += `<table class="parse-table" style="font-size:12.5px;text-align: center">
-            <thead><tr><th>期号</th><th>特码</th><th>生肖</th><th>分类标签</th></tr></thead>
-            <tbody>`;
-        recent.forEach(r => {
-            let color = getColor(r.num);
-            let tagHtml = r.tags.map(t => `<span class="num-chip" style="margin:1px 2px;">${t}</span>`).join('');
-            html += `<tr>
-                <td>${r.qishu}</td>
-                <td><span class="parse-chip" style="background:${color}">${r.num.toString().padStart(2,'0')}</span></td>
-                <td>${r.zodiac}</td>
-                <td style="text-align:center;">${tagHtml}</td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        box.innerHTML = html;
-        let toggleBtn = document.getElementById('recent30ToggleBtn');
-        box.style.display = '';
-        if (toggleBtn) toggleBtn.textContent = '收起';
-    } catch (e) {
-        console.error(e);
-        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 加载失败：${e.message}<br><span style="color:#94a3b8;font-size:12px;">请确认开奖记录文件与页面在同一目录，且格式为 {"data":[...]}</span></div>`;
+    // ===== 渲染 =====
+    let recent = records.slice(0, limit);
+    if (recent.length === 0) {
+        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 无有效开奖记录或数据异常</div>`;
+        return;
+    }
+
+    let html = `<table class="parse-table" style="font-size:12.5px;text-align: center">
+        <thead><tr><th>期号</th><th>特码</th><th>生肖</th><th>分类标签</th></tr></thead>
+        <tbody>`;
+    recent.forEach(r => {
+        let tagHtml = r.tags.map(t => `<span class="num-chip" style="margin:1px 2px;">${t}</span>`).join('');
+        html += `<tr>
+            <td>${r.qishu}</td>
+            <td><span class="parse-chip" style="background:${getColor(r.num)}">${r.num.toString().padStart(2,'0')}</span></td>
+            <td>${r.zodiac}</td>
+            <td style="text-align:center;">${tagHtml}</td>
+        </tr>`;
+    });
+    html += `</tbody></table>`;
+    box.innerHTML = html;
+
+    let toggleBtn = document.getElementById('recent30ToggleBtn');
+    let statsEl = document.getElementById('recent30Stats');
+    box.style.display = '';
+    if (statsEl) statsEl.style.display = '';
+    if (toggleBtn) toggleBtn.textContent = '收起';
+
+    if (statsEl) {
+        statsEl.innerHTML = `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">最新年份 ${maxYear || '—'}，共 ${count} 期</div>
+            <div style="margin-top:4px;"><b>近10期：</b>${fmtDimStats(calcDimStats(records.slice(0, 10)))}</div>
+            <div><b>历史期：</b>${fmtDimStats(calcDimStats(records))}</div>`;
     }
 }
 
