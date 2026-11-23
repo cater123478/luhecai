@@ -1496,7 +1496,7 @@ function runFilter() {
         <div style="margin-bottom:8px;">🔢 号码明细(共${details.length}个)：</div>
         <div class="num-detail">${details.join('、')}</div>
 
-        ${excludeRaw ? `<div style="margin-top:8px;font-size:12.5px;color:#dc2626;">🚫 已剔除：${excludeRaw}</div>` : ''}
+        ${excludeRaw ? `<div style="margin-top:8px;font-size:12.5px;color:#dc2626;white-space:normal;word-break:break-all;line-height:1.6;">🚫 已剔除：${excludeRaw}</div>` : ''}
 
         <button class="detail-toggle" onclick="toggleDetail(this)">
             <span>条件明细</span><span class="arrow">▾</span>
