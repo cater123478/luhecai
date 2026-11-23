@@ -1,0 +1,2397 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>玩彩小助手</title>
+
+<style>
+body{font-family:Arial;max-width:650px;margin:auto;padding:15px;background:#f5f6fa;}
+h2{text-align:center;}
+
+.card{
+  background:#fff;
+  border-radius:12px;
+  padding:12px;
+  margin-top:12px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+.tm{border-left:5px solid #e91e63;}
+
+.btn{
+  display:block;width:100%;padding:14px;margin-top:10px;
+  border:none;border-radius:12px;font-size:16px;color:#fff;
+}
+
+.btn-rec{background:linear-gradient(45deg,#4caf50,#2ecc71);}
+.btn-data{background:linear-gradient(45deg,#ff9800,#ffb74d);}
+.btn-tm{background:linear-gradient(45deg,#e91e63,#f06292);}
+
+#toast{
+  position:fixed;
+  bottom:100px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.8);
+  color:#fff;
+  padding:10px 14px;
+  border-radius:20px;
+  font-size:14px;
+  opacity:0;
+  transition:all 0.3s;
+  z-index:999;
+  white-space:normal;
+  max-width:85vw;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#toast.show{
+  opacity:1;
+}
+
+.marquee{
+  width:100%;
+  overflow:hidden;
+  background: #5db1f3;
+  color:#fff;
+  font-size:12px;
+  padding:6px 0;
+}
+
+.marquee-text{
+  display:inline-block;
+  white-space:nowrap;
+  padding-left:100%;
+  animation:scroll 31s linear infinite;   /*越小越快，滚动速度设置*/
+}
+
+@keyframes scroll{
+  0%{ transform:translateX(0); }
+  100%{ transform:translateX(-100%); }
+}
+
+/* 新开奖高亮 */
+.highlight{
+  color:#ffeb3b;
+  font-weight:bold;
+}
+
+.mq-num{
+  display:inline-block;
+  margin:0 2px;
+  padding:2px 6px;
+  border-radius:6px;
+  font-size:16px;
+  color:#fff;
+}
+
+.mq-normal{
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 2px 6px;
+}
+
+.mq-tm{
+  background:#ff5722;
+  font-weight:bold;
+  transform:scale(1.15);
+  box-shadow:0 0 6px rgba(255,87,34,0.7);
+  margin-left: 8px;
+}
+</style>
+</head>
+
+<body>
+<div class="marquee">
+  <div id="marqueeText" class="marquee-text"></div>
+</div>
+<h2>🔥 玩彩小助手</h2>
+<!--<button class="btn btn-rec" onclick="generateBets()">💰 生成投注方案</button>-->
+<button class="btn btn-tm" onclick="showTmHistory()">📊 历史投注结果</button>
+<button class="btn btn-data" onclick="loadHistory()">📥 获取历史开奖数据</button>
+<!--<button class="btn" onclick="fixCorruptedPeriods()" style="background:linear-gradient(45deg,#ff5722,#ff9800);color:#fff;">🔧 修复255期数据</button>-->
+<button class="btn" onclick="window.location.href='liutouzu.html'" style="background:linear-gradient(45deg,#ff6f00,#ffb300);color:#fff;">投注工具</button>
+
+<div id="shengXiaoStatus" style="font-size:11px;color:#999;margin-top:4px;"></div>
+<div id="indexOut"></div>
+<div id="fixedOut"></div>
+<div id="out"></div>
+<div id="tmOut"></div>
+<div id="betOut"></div>
+<div id="tmHistory"></div>
+<div id="history"></div>
+<div id="toast"></div>
+<script>
+// 所有号码按生肖分组
+const SHENGXIAO_MAP = {
+    '马': [1, 13, 25, 37, 49],
+    '蛇': [2, 14, 26, 38],
+    '龙': [3, 15, 27, 39],
+    '兔': [4, 16, 28, 40],
+    '虎': [5, 17, 29, 41],
+    '牛': [6, 18, 30, 42],
+    '鼠': [7, 19, 31, 43],
+    '猪': [8, 20, 32, 44],
+    '狗': [9, 21, 33, 45],
+    '鸡': [10, 22, 34, 46],
+    '猴': [11, 23, 35, 47],
+    '羊': [12, 24, 36, 48]
+};
+
+// 五行分组
+const WUXING_MAP = {
+    '金': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43],
+    '木': [8, 9, 16, 17, 24, 25, 38, 39, 46, 47],
+    '水': [1, 14, 15, 22, 23, 30, 31, 44, 45],
+    '火': [2, 3, 10, 11, 18, 19, 32, 33, 40, 41, 48, 49],
+    '土': [6, 7, 20, 21, 28, 29, 36, 37]
+};
+
+// 波色分组
+const BOSE_MAP = {
+    '红波': [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46],
+    '蓝波': [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48],
+    '绿波': [5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]
+};
+
+
+const lockDays = 7;
+const today = new Date().toISOString().split("T")[0];
+let fixedData = JSON.parse(localStorage.getItem("fixedData") || "{}");
+let loading = false;
+const kjDataSize = 100;
+const hisKjDataSize = 10;
+const fupanSize = 10;
+let currentAnalysis = null;
+
+// 生肖映射（按2026年马年规则）
+const ZODIAC_MAP = {
+    1:'马',2:'蛇',3:'龙',4:'兔',5:'虎',6:'牛',7:'鼠',8:'猪',9:'狗',10:'鸡',11:'猴',12:'羊',
+    13:'马',14:'蛇',15:'龙',16:'兔',17:'虎',18:'牛',19:'鼠',20:'猪',21:'狗',22:'鸡',23:'猴',24:'羊',
+    25:'马',26:'蛇',27:'龙',28:'兔',29:'虎',30:'牛',31:'鼠',32:'猪',33:'狗',34:'鸡',35:'猴',36:'羊',
+    37:'马',38:'蛇',39:'龙',40:'兔',41:'虎',42:'牛',43:'鼠',44:'猪',45:'狗',46:'鸡',47:'猴',48:'羊',
+    49:'马'
+};
+
+function getZodiac(num) {
+    return ZODIAC_MAP[num] || '';
+}
+
+function getBoseColor(num) {
+    if (BOSE_MAP['红波'].includes(num)) return '#e74c3c';   // 红色
+    if (BOSE_MAP['蓝波'].includes(num)) return '#0d93ea';   // 蓝色
+    if (BOSE_MAP['绿波'].includes(num)) return '#2ecc71';   // 绿色
+    return '';
+}
+
+function formatNums(nums) {
+    let arr = nums.split(",");
+    return arr.map((n, idx) => {
+        let num = parseInt(n);
+        let zodiac = getZodiac(num);
+        let color = getBoseColor(num);
+        let cls = idx === arr.length - 1 ? 'mq-num mq-tm' : 'mq-num mq-normal';
+        return `<span class="${cls}" style="${color ? 'background:'+color : ''}">${num}(${zodiac})</span>`;
+    }).join("");
+}
+
+// ===== 数据 =====
+async function fetchRaw(){
+    try {
+        // 添加10秒超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        let res = await fetch("https://ls.kjkj.fit/kj?t=" + Date.now(), {
+            cache: "no-store",
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if(!res.ok){
+            throw new Error(`接口状态异常: ${res.status}`);
+        }
+        let text = await res.text();
+        try{
+            return JSON.parse(text);
+        }catch(e){
+            console.warn("返回不是JSON：", text.substring(0, 200));
+            return { data: [] };
+        }
+    }catch(e){
+        if (e.name === 'AbortError') {
+            console.error("接口请求超时（>10秒）");
+        } else {
+            // 接口请求失败
+        }
+        return { data: [] };
+    }
+}
+
+async function fetchData(forceRefresh = false){
+    const CACHE_KEY = "cacheHistory";
+    const CACHE_TIME_KEY = "cacheHistoryTime";
+    const EXPIRE = 30 * 60 * 1000;
+    
+    // 安全读取缓存
+    let cache = [];
+    try {
+        let cacheStr = localStorage.getItem(CACHE_KEY);
+        if (cacheStr) {
+            cache = JSON.parse(cacheStr);
+        }
+    } catch(e) {
+        console.warn("缓存数据解析失败，将重新获取");
+        cache = [];
+        localStorage.removeItem(CACHE_KEY);
+    }
+    
+    let cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+
+    // 如果不是强制刷新，且缓存有效，则使用缓存
+    if(!forceRefresh && cache.length > 0 && cacheTime && (Date.now() - cacheTime < EXPIRE)){
+        return cache;
+    }
+    
+    if (forceRefresh) {
+        // 强制刷新，忽略缓存
+    }
+
+    try{
+        let json = await fetchRaw();
+        let data = (json.data || []).slice(0, kjDataSize);
+        // ❗ 接口空 → 用旧缓存
+        if(!data.length){
+            if(cache.length > 0){
+                console.warn("接口无数据，用缓存");
+                return cache;
+            }
+            return [];
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_TIME_KEY, Date.now());
+        return data;
+    }catch(e){
+        console.warn("拉取数据异常", e);
+        if(cache.length > 0){
+            return cache;
+        }
+        return [];
+    }
+}
+// ===== 工具 =====
+function getHistory(raw){
+    return raw
+        .filter(i=>i && i.num)
+        .map(i=>i.num.split(',').map(Number));
+}
+
+function showToast(msg){
+    let t = document.getElementById("toast");
+    t.innerText = msg;
+    t.classList.add("show");
+
+    setTimeout(()=>{
+        t.classList.remove("show");
+    },2000);
+}
+
+// ===== 特码分析 =====
+async function showTmAnalysis(forceUpdate=false){
+    if(forceUpdate && !confirm("=====  确认刷新特码？=====")){
+        return;
+    }
+    let box = document.getElementById("tmOut");
+    box.innerHTML = "⏳ 正在获取推荐...";
+    await new Promise(r => setTimeout(r, 300));
+
+    let raw = await fetchData();
+    if(!raw || !raw.length){
+        box.innerHTML = "⚠️ 拉取数据失败";
+        return;
+    }
+
+    let latest = raw[0];
+    let history = getHistory(raw);
+    let currentPeriod = Number(latest.qishu) + 1;
+
+    updateResult(latest);
+
+    // ★ 先从云端查找当前期是否已有推荐（实现多端一致）
+    let cloudRecommendation = null;
+    if (!forceUpdate && CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    let cloudData = Array.isArray(result.record) ? result.record : [];
+                    cloudRecommendation = cloudData.find(r => r.expect === currentPeriod && r.nums && r.nums.length > 0);
+                }
+            }
+        } catch(e) {
+            console.log("云端查询推荐失败:", e.message);
+        }
+    }
+
+    let hot15, zodiacs;
+    
+    if (cloudRecommendation && !forceUpdate) {
+        // ★ 云端有当前期推荐 → 直接使用（多端一致）
+        // 注意：不再检查统计字段完整性，避免误删有效推荐
+        hot15 = cloudRecommendation.nums.map(n => ({
+            num: n.num,
+            level: n.level || 'supplement',
+            score: n.score || 0,
+            category: n.category || '',
+            freq: n.freq || 0,
+            miss: n.miss || 0,
+            consecutiveMiss: n.consecutiveMiss || 0
+        }));
+        zodiacs = (cloudRecommendation.zodiacNums || []).map(z => ({
+            zodiac: z.zodiac,
+            level: z.level || 'supplement',
+            score: z.score || 0,
+            category: z.category || ''
+        }));
+        console.log(`✅ 使用云端${currentPeriod}期推荐`);
+    } else {
+        // ★ 云端没有或强制刷新 → 先同步云端历史（确保cold覆盖机制多端一致）
+        if (CLOUD_API_KEY) {
+            try {
+                await loadFromCloud();
+            } catch(e) {
+                console.log("云端历史同步失败:", e.message);
+            }
+        }
+        hot15 = getHotNumbers(history);
+        zodiacs = getHotZodiacs(history);
+    }
+
+    currentAnalysis = {
+        nums: hot15,
+        zodiacNums: zodiacs,
+        top: [],
+        kill: [],
+        seed: 0,
+        weights: {}
+    };
+
+    // ⭐ 统一保存到两个存储（保持同步）+ 云端同步
+    saveHot15History(hot15, latest, history, zodiacs);  // ★ 传入生肖
+    
+    // ⭐ 直接传给renderTm，不再让它重新计算
+    renderTm(currentAnalysis, currentPeriod, {nums: hot15, zodiacNums: zodiacs});
+
+    if(forceUpdate){
+        showToast("♻️ 已手动刷新分析结果");
+    }
+}
+
+async function saveHot15History(hot15, latest, history, zodiacs=null) {
+    // ★ 统一保存到两个存储（tmHistory + hot15History），保持同步
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let expect = Number(latest.qishu) + 1;
+
+    // 删除当前期旧记录
+    list = list.filter(i => i.expect != expect);
+
+    // ★ 精简保存：保留必要字段 + 统计字段（用于详情显示）
+    let pureNums = hot15.map(item => ({
+        num: item.num || item,
+        level: item.level || 'supplement',
+        score: Math.round((item.score || 0) * 100) / 100,
+        category: item.category || '',
+        freq: item.freq || 0,
+        miss: item.miss || 0,
+        consecutiveMiss: item.consecutiveMiss || 0
+    }));
+
+    // ★ 如果没传入zodiacs，则计算（兼容旧调用）
+    if (!zodiacs) {
+        zodiacs = getHotZodiacs(history);
+    }
+    let pureZodiacs = zodiacs.map(item => ({
+        zodiac: item.zodiac,
+        level: item.level || 'supplement',
+        score: Math.round((item.score || 0) * 100) / 100,
+        category: item.category || '',
+        freq: item.freq || 0,
+        freqRate: item.freqRate || 0,
+        miss: item.miss || 0,
+        consecutiveMiss: item.consecutiveMiss || 0
+    }));
+
+    // 获取当前最新数据期号（用于数据驱动缓存）
+    let basedOnPeriod = 0;
+    try {
+        let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (rawHistory && rawHistory.length > 0) {
+            basedOnPeriod = Math.max(...rawHistory.map(item => {
+                let period = item.qishu || item.expect || item.period || 0;
+                return parseInt(period) || 0;
+            }));
+        }
+    } catch (e) {}
+
+    // 插入当前期（精简格式）
+    let now = new Date();
+    let localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    let newRecord = {
+        expect: expect,
+        nums: pureNums,           // 精简号码数组
+        zodiacNums: pureZodiacs,   // 精简生肖数组
+        open: null,
+        hit: false,
+        date: localDate,          // ★ 实时保存时间
+        basedOnPeriod: basedOnPeriod  // ★ 基于哪期数据计算的（数据版本号）
+    };
+
+    list.unshift(newRecord);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    // ★ 同步到 hot15History（保持两个存储完全一致）
+    let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
+    hot15List = hot15List.filter(i => i.expect != expect);
+    hot15List.unshift({...newRecord});
+    hot15List.sort((a, b) => b.expect - a.expect);
+    if (hot15List.length > 30) hot15List = hot15List.slice(0, 30);
+    localStorage.setItem("hot15History", JSON.stringify(hot15List));
+
+    // 自动同步到云端（静默执行，不阻塞）- 精简保存，不含统计字段
+    // ★ 防止覆盖已有历史数据：先拉取云端现有数据，合并后再上传
+    let cloudData = list.map(item => ({
+        expect: item.expect,
+        nums: (item.nums || []).map(n => ({
+            num: n.num,
+            level: n.level,
+            score: n.score,
+            category: n.category
+        })),
+        zodiacNums: (item.zodiacNums || []).map(z => ({
+            zodiac: z.zodiac,
+            level: z.level,
+            score: z.score,
+            category: z.category
+        })),
+        open: item.open,
+        hit: item.hit,
+        date: item.date,
+        basedOnPeriod: item.basedOnPeriod,
+        hitNums: item.hitNums,
+        hitTop: item.hitTop,
+        hitZodiac: item.hitZodiac
+    }));
+    
+    // ★ 合并策略：保留云端已有的推荐数据，只新增/更新当前期
+    if (CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    let existingData = Array.isArray(result.record) ? result.record : [];
+                    // 对于已存在的记录，如果云端有nums而本地没有，保留云端的
+                    cloudData = cloudData.map(localItem => {
+                        let existing = existingData.find(e => e.expect === localItem.expect);
+                        if (existing && (!localItem.nums || localItem.nums.length === 0) && existing.nums && existing.nums.length > 0) {
+                            return { ...localItem, nums: existing.nums, zodiacNums: existing.zodiacNums };
+                        }
+                        return localItem;
+                    });
+                    // 补充本地没有的云端历史记录
+                    let localExpects = cloudData.map(i => i.expect);
+                    for (let existing of existingData) {
+                        if (!localExpects.includes(existing.expect)) {
+                            cloudData.push(existing);
+                        }
+                    }
+                    // 按期号排序
+                    cloudData.sort((a, b) => b.expect - a.expect);
+                }
+            }
+        } catch(e) {
+            console.log("云端合并失败:", e.message);
+        }
+    }
+    
+    saveToCloud(cloudData).catch(e => console.error("云端同步失败:", e));
+}
+
+function updateResult(latest){
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let qishu = Number(latest.qishu);
+
+    // 解析特码（兼容多种格式）
+    let nums;
+    if (Array.isArray(latest.num)) {
+        nums = latest.num;
+    } else if (typeof latest.num === 'string') {
+        nums = latest.num.replace(/\+/g, '').split(',').map(n => parseInt(n.trim()));
+    }
+    let openNum = nums ? nums[nums.length - 1] : null;
+
+    let found = false;
+    list.forEach(item => {
+        if(Number(item.expect) === qishu){
+            found = true
+            if(item.open === null){
+                item.open = openNum;
+                item.hitNums = item.nums ? item.nums.map(n => String(n)).includes(String(openNum)) : false;
+                item.hitTop  = item.top ? item.top.map(n => String(n)).includes(String(openNum)) : false;
+                item.hit = item.hitTop;
+                // ⭐ 生肖命中
+                item.hitZodiac = item.zodiacNums ? item.zodiacNums.includes(getZodiac(openNum)) : false;            }
+        }
+    });
+    if(!found){
+        list.unshift({
+            expect: qishu,
+            date: latest.date,
+            nums: [],
+            zodiacNums: [],
+            top: [],
+            kill: [],
+            open: openNum,
+            hit: false,
+            hitNums: false,
+            hitTop: false,
+            hitZodiac: false
+        });
+    }
+    list.sort((a,b)=>b.expect - a.expect);
+    localStorage.setItem("tmHistory", JSON.stringify(list));
+
+    // 开奖结果更新后自动同步到云端
+    saveToCloud(list).catch(e => console.error("云端同步失败:", e));
+
+    let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
+    let idx = hot15History.findIndex(item => item.expect === qishu);
+    if (idx !== -1) {
+        hot15History[idx].open = openNum;
+        hot15History[idx].hit = hot15History[idx].nums ? hot15History[idx].nums.map(n => String(n)).includes(String(openNum)) : false;
+        // ★ 同时设置 hitNums 和 hitZodiac（用于显示）
+        hot15History[idx].hitNums = hot15History[idx].nums ? hot15History[idx].nums.map(n => String(n)).includes(String(openNum)) : false;
+        hot15History[idx].hitZodiac = hot15History[idx].zodiacNums ? hot15History[idx].zodiacNums.includes(getZodiac(openNum)) : false;
+        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+    }
+}
+
+// ===== 统一推荐引擎（号码+生肖共用） =====
+
+/**
+ * 通用统计计算
+ * @param {Array} history - 历史数据数组
+ * @param {Function} extractor - 从每期提取值的函数 (periodData) => value
+ * @param {Array} allItems - 所有候选项列表
+ * @param {Array|null} rawData - 原始数据（用于获取期号）
+ * @returns {Array} 每个候选项的统计数据
+ */
+function calculateStats(history, extractor, allItems, rawData = null) {
+    let data = history.slice(0, 50);
+    let freq = {};
+    let lastAppearIndex = {};
+    let lastAppearQishu = {};
+    let latestQishu = rawData && rawData.length > 0 ? parseInt(rawData[0].qishu) : 0;
+
+    for (let i = 0; i < data.length; i++) {
+        let value = extractor(data[i]);
+        if (value === undefined || value === null) continue;
+
+        freq[value] = (freq[value] || 0) + 1;
+
+        if (lastAppearIndex[value] === undefined || i < lastAppearIndex[value]) {
+            lastAppearIndex[value] = i;
+            if (rawData && rawData[i]) {
+                lastAppearQishu[value] = parseInt(rawData[i].qishu);
+            }
+        }
+    }
+
+    // 计算连续遗漏
+    let consecutiveMiss = {};
+    for (let item of allItems) {
+        consecutiveMiss[item] = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (extractor(data[i]) === item) break;
+            consecutiveMiss[item]++;
+        }
+        if (lastAppearIndex[item] === undefined) {
+            consecutiveMiss[item] = 50;
+        }
+    }
+
+    // 构建详细统计数据
+    let result = [];
+    for (let item of allItems) {
+        let f = freq[item] || 0;
+        let rawMiss = lastAppearIndex[item] !== undefined ? lastAppearIndex[item] : 999;
+        let missValue = Math.min(rawMiss, 50);
+        let consec = Math.min(consecutiveMiss[item], 50);
+        let freqRate = f / 50;
+
+        let lastQishu = lastAppearQishu[item] || (latestQishu - 999);
+        let periodsSinceLast = latestQishu - lastQishu;
+
+        result.push({
+            id: item,
+            freq: f,
+            freqRate: freqRate,
+            rawMiss: rawMiss,
+            miss: missValue,
+            consecutiveMiss: consec,
+            periodsSinceLast: periodsSinceLast,
+            lastQishu: lastQishu
+        });
+    }
+
+    return result;
+}
+
+/**
+ * 频率区间分类
+ * @param {Object} item - 统计数据项
+ * @param {Object} thresholds - 阈值配置 { overheat, hot, warm }
+ * @returns {String} 分类名称
+ */
+function categorizeByFreq(item, thresholds = {}) {
+    let { overheat = 0.14, hot = 0.10, warm = 0.06 } = thresholds;
+
+    if (item.freqRate >= overheat) return 'overheat';
+    if (item.freqRate >= hot) return 'hot';
+    if (item.freqRate >= warm) return 'warm';
+    return 'cold';
+}
+
+/**
+ * 回温检测：冷门/温号在最近N期内出现过
+ * @param {Object} item - 已分类的统计项
+ * @param {Number} maxPeriods - 最大期数阈值（默认3）
+ * @returns {Boolean} 是否回温
+ */
+function checkWarmingUp(item, maxPeriods = 3) {
+    return (item.category === 'cold' || item.category === 'warm') &&
+           item.periodsSinceLast <= maxPeriods;
+}
+
+/**
+ * ★★★ 统一选择引擎 ★★★
+ * 支持：4级分类 + 过热排除 + 回温优先 + 日期轮换 + 自定义配额
+ *
+ * @param {Array} statsData - calculateStats 返回的统计数据（需先调用 categorizeByFreq + checkWarmingUp）
+ * @param {Object} config - 配置选项：
+ *   - count: Number - 总选择数量（默认15）
+ *   - quotas: Object - 各分类配额 { overheat, hot, warm, cold }（可选，有默认值）
+ *   - scoreFn: Function - 自定义评分函数 (item) => number（可选）
+ *   - preferWarmingFor: Array - 需要回温优先的分类（默认 ['warm', 'cold']）
+ *   - displayLevels: Object - 显示层级配置 { core, supplement, cold }（百分比或固定数）
+ * @returns {Array} 选择结果（带 level 标记）
+ */
+
+/**
+ * 获取最近N期推荐过的cold层号码（用于覆盖机制）
+ * @param {number} periods - 查看最近几期，默认2期
+ * @returns {Array} 最近N期cold层推荐过的号码列表
+ */
+function getRecentlyRecommendedColdNums(periods = 2) {
+    try {
+        let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+
+        // 获取当前期号
+        let currentPeriod = window.currentDisplayPeriod || 0;
+        if (currentPeriod === 0) {
+            // 尝试从cacheHistory获取最新期号推算
+            let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+            if (raw && raw.length > 0) {
+                let maxQishu = Math.max(...raw.map(item => {
+                    let p = item.qishu || item.expect || item.period || 0;
+                    return parseInt(p) || 0;
+                }));
+                currentPeriod = maxQishu + 1;
+            }
+        }
+
+        // 取最近N期（排除当前期）
+        let recentRecords = tmHistory
+            .filter(r => r.expect && r.expect < currentPeriod && r.nums && Array.isArray(r.nums))
+            .sort((a, b) => b.expect - a.expect)
+            .slice(0, periods);
+
+        // 提取这些期中cold层的号码
+        let recommendedColdNums = [];
+        recentRecords.forEach(record => {
+            if (record.nums) {
+                record.nums.forEach(num => {
+                    let numObj = num.num || num;
+                    let level = num.level || '';
+
+                    // 只收集cold层的号
+                    if (level === 'cold') {
+                        recommendedColdNums.push(Number(numObj));
+                    }
+                });
+            }
+        });
+
+        return [...new Set(recommendedColdNums)];  // 去重
+    } catch (e) {
+        console.error('获取近期推荐cold号失败:', e);
+        return [];  // 出错返回空数组，不影响主逻辑
+    }
+}
+
+function unifiedSelect(statsData, config = {}) {
+    let {
+        count = 15,
+        quotas = {},
+        scoreFn = null,
+        preferWarmingFor = ['warm', 'cold'],
+        displayLevels = {},
+        pureRankCategories = []  // ★ 使用纯分数排名的分类（不日期轮换）
+    } = config;
+
+    // ★ 默认配额（根据总数智能分配）
+    let defaultQuotas;
+    if (count <= 4) {
+        defaultQuotas = { overheat: 0, hot: 1, warm: 2, cold: 1 };
+    } else if (count <= 10) {
+        defaultQuotas = { overheat: 0, hot: 2, warm: Math.ceil(count * 0.5), cold: Math.floor(count * 0.15) };
+    } else {
+        // 15码：热30% 温45% 冷15% 其余按分补
+        defaultQuotas = {
+            overheat: 0,
+            hot: Math.ceil(count * 0.27),
+            warm: Math.ceil(count * 0.40),
+            cold: Math.floor(count * 0.13)
+        };
+    }
+    let finalQuotas = { ...defaultQuotas, ...quotas };
+
+    let result = [];
+    let used = new Set();
+    
+    // ★ 数据驱动轮换因子：基于数据版本号，不是日期！
+    // 只有开奖后数据更新了，rotateFactor 才会变 → 推荐才会变
+    let dataVersionPeriod = 0;
+    try {
+        let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (rawHistory && rawHistory.length > 0) {
+            dataVersionPeriod = Math.max(...rawHistory.map(item => {
+                return parseInt(item.qishu || item.expect || item.period || 0) || 0;
+            }));
+        }
+    } catch (e) {}
+    let rotateFactor = dataVersionPeriod > 0 ? dataVersionPeriod : new Date().getDate();
+
+    // ★ 辅助函数：在指定类别中选择（回温优先 + 日期轮换）
+    function selectFromCategory(category, maxCount, preferWarming = false) {
+        let candidates = statsData.filter(item =>
+            item.category === category && !used.has(item.id)
+        );
+
+        if (candidates.length === 0) return [];
+
+        // 排序
+        candidates.sort((a, b) => {
+            // 回温优先
+            if (preferWarming) {
+                if (a.isWarmingUp && !b.isWarmingUp) return -1;
+                if (!a.isWarmingUp && b.isWarmingUp) return 1;
+                if (a.periodsSinceLast !== b.periodsSinceLast) {
+                    return a.periodsSinceLast - b.periodsSinceLast;
+                }
+            }
+
+            // 评分排序
+            if (scoreFn) {
+                return scoreFn(b) - scoreFn(a);
+            }
+            // 默认评分：频率权重 + 遗漏权重
+            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
+            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
+            return scoreB - scoreA;
+        });
+
+        // ★ 纯分数排名模式（不使用日期轮换，按分数+频率均衡选取）
+        if (pureRankCategories.includes(category)) {
+            // ★ 按频率分组：0次 vs 1次及以上
+            let zeroFreq = candidates.filter(c => c.freq === 0);
+            let nonZeroFreq = candidates.filter(c => c.freq > 0);
+
+            // 各组分别排序
+            zeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.miss - a.miss));
+            nonZeroFreq.sort((a, b) => scoreFn ? scoreFn(b) - scoreFn(a) : (b.freq * 4 + Math.sqrt(b.miss) * 2 - a.freq * 4 - Math.sqrt(a.miss) * 2));
+
+            // ★ 动态均衡分配：按实际数量比例分配（至少各1个）
+            let totalCount = zeroFreq.length + nonZeroFreq.length;
+            let zeroRatio = zeroFreq.length / totalCount;
+            let zeroCount = Math.max(Math.round(maxCount * zeroRatio), 1);
+            let nonZeroCount = maxCount - zeroCount;
+            if (nonZeroCount < 1 && maxCount > 1) { zeroCount = maxCount - 1; nonZeroCount = 1; }
+
+            // ★ 0次号选择：cold层加入"覆盖机制"，其他层保持原逻辑
+            let zeroSelected = [];
+            if (zeroFreq.length > 0 && zeroCount > 0) {
+                if (zeroFreq.length > zeroCount) {
+                    // ★ 判断是否是cold层（需要覆盖机制）
+                    if (category === 'cold') {
+                        // cold层：排除近期已推荐的0频次号，强制覆盖不同号码
+                        let excludeNums = getRecentlyRecommendedColdNums(2);
+
+                        // 分成两组：没推荐过的 vs 推荐过的
+                        let available = zeroFreq.filter(c => !excludeNums.includes(c.id));
+                        let excluded = zeroFreq.filter(c => excludeNums.includes(c.id));
+
+                        if (available.length >= zeroCount) {
+                            // ✅ 没推荐过的够选 → 全从available中轮换选
+                            let start = (rotateFactor - 1) % available.length;
+                            let step = Math.floor(available.length / zeroCount);
+                            for (let i = 0; i < zeroCount; i++) {
+                                zeroSelected.push(available[(start + i * step) % available.length]);
+                            }
+                        } else {
+                            // ⚠️ 不够 → 先选available，再从excluded补
+                            zeroSelected = [...available];
+                            let needMore = zeroCount - zeroSelected.length;
+                            if (needMore > 0 && excluded.length > 0) {
+                                let start = (rotateFactor - 1) % excluded.length;
+                                let step = Math.floor(excluded.length / needMore);
+                                for (let i = 0; i < needMore; i++) {
+                                    zeroSelected.push(excluded[(start + i * step) % excluded.length]);
+                                }
+                            }
+                        }
+                    } else {
+                        // 非cold层（warm等）：保持原有日期轮换逻辑不变
+                        let start = (rotateFactor - 1) % zeroFreq.length;
+                        let step = Math.floor(zeroFreq.length / zeroCount);  // 步长分散
+                        for (let i = 0; i < zeroCount; i++) {
+                            zeroSelected.push(zeroFreq[(start + i * step) % zeroFreq.length]);
+                        }
+                    }
+                } else {
+                    zeroSelected = zeroFreq;
+                }
+            }
+
+            // 非零次号用日期轮换
+            let nonZeroSelected = [];
+            if (nonZeroFreq.length > 0 && nonZeroCount > 0) {
+                if (nonZeroFreq.length > nonZeroCount) {
+                    let start = rotateFactor % nonZeroFreq.length;
+                    for (let i = 0; i < nonZeroCount; i++) {
+                        nonZeroSelected.push(nonZeroFreq[(start + i) % nonZeroFreq.length]);
+                    }
+                } else {
+                    nonZeroSelected = nonZeroFreq;
+                }
+            }
+
+            let selected = [...zeroSelected, ...nonZeroSelected];
+
+            return selected;
+        }
+
+        // ★ 回温优先选择 + 日期轮换
+        if (preferWarming) {
+            let warmingCandidates = candidates.filter(c => c.isWarmingUp);
+            let normalCandidates = candidates.filter(c => !c.isWarmingUp);
+
+            let selected = [];
+
+            // 1. 先选回温的（日期轮换）
+            if (warmingCandidates.length > 0 && selected.length < maxCount) {
+                let warmCount = Math.min(warmingCandidates.length, maxCount);
+                let warmStartIndex = (rotateFactor - 1) % warmingCandidates.length;
+
+                for (let i = 0; i < warmCount && selected.length < maxCount; i++) {
+                    let idx = (warmStartIndex + i) % warmingCandidates.length;
+                    selected.push(warmingCandidates[idx]);
+                }
+            }
+
+            // 2. 再从非回温中选（日期轮换，不同偏移）
+            if (normalCandidates.length > 0 && selected.length < maxCount) {
+                let remaining = maxCount - selected.length;
+                let normalStartIndex = (rotateFactor) % normalCandidates.length;
+
+                for (let i = 0; i < remaining && selected.length < maxCount; i++) {
+                    let idx = (normalStartIndex + i) % normalCandidates.length;
+                    selected.push(normalCandidates[idx]);
+                }
+            }
+
+            return selected;
+        }
+
+        // 不需要回温优先 → 直接日期轮换
+        if (candidates.length > maxCount) {
+            let startIndex = (rotateFactor - 1) % candidates.length;
+            let selected = [];
+
+            for (let i = 0; i < maxCount; i++) {
+                let idx = (startIndex + i) % candidates.length;
+                selected.push(candidates[idx]);
+            }
+
+            return selected;
+        }
+
+        return candidates.slice(0, maxCount);
+    }
+
+    // ★ 按类别顺序选择：hot → warm → cold → overheat（补充用）
+    const categoryOrder = ['hot', 'warm', 'cold'];
+
+    for (let cat of categoryOrder) {
+        if (finalQuotas[cat] > 0) {
+            let picks = selectFromCategory(cat, finalQuotas[cat], preferWarmingFor.includes(cat));
+            picks.forEach(p => {
+                result.push(p);
+                used.add(p.id);
+            });
+        }
+    }
+
+    // ★ 如果还不够，从剩余候选中补满（纯分数排序，不按类别优先）
+    if (result.length < count) {
+        let remaining = statsData.filter(item => !used.has(item.id));
+        remaining.sort((a, b) => {
+            if (scoreFn) return scoreFn(b) - scoreFn(a);
+            let scoreA = a.freq * 4 + Math.sqrt(a.miss) * 2;
+            let scoreB = b.freq * 4 + Math.sqrt(b.miss) * 2;
+            return scoreB - scoreA;
+        });
+
+        for (let r of remaining) {
+            if (result.length >= count) break;
+            result.push(r);
+            used.add(r.id);
+        }
+    }
+
+    // ★ 分层标记：整体按评分排序后切3段（科学推荐，不固化category）
+    // 15个号统一按score高→低排序，前5→🔥，中5→⭐，后5→💎
+    let CORE_COUNT = displayLevels.core || 5;
+    let SUPP_COUNT = (displayLevels.supplement || 10) - CORE_COUNT;
+
+    result.sort((a, b) => {
+        if (scoreFn) return scoreFn(b) - scoreFn(a);
+        return (b.freq * 4 + Math.sqrt(b.miss) * 2) - (a.freq * 4 + Math.sqrt(a.miss) * 2);
+    });
+
+    result.forEach((item, index) => {
+        if (index < CORE_COUNT) item.level = 'core';
+        else if (index < CORE_COUNT + SUPP_COUNT) item.level = 'supplement';
+        else item.level = 'cold';
+    });
+
+    return result;
+}
+
+// ===== 50期热号15码（使用统一引擎）=====
+function getHotNumbers(history, count = 15) {
+    // 1-49 号码列表
+    const ALL_NUMS = Array.from({ length: 49 }, (_, i) => i + 1);
+
+    // 获取原始数据（用于期号计算）
+    let rawData = null;
+    try {
+        rawData = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    } catch(e) {}
+
+    // ★ 步骤1：计算统计
+    let stats = calculateStats(
+        history,
+        (period) => period[6],  // 提取特码（第7个号码）
+        ALL_NUMS,
+        rawData
+    );
+
+    // ★ 步骤2：分类 + 回温检测
+    let thresholds = { overheat: 0.16, hot: 0.10, warm: 0.02 };  // 号码阈值：≥8次过热, ≥5次热, ≥1次温(扩大warm池)
+    stats.forEach(item => {
+        item.category = categorizeByFreq(item, thresholds);
+        item.isWarmingUp = checkWarmingUp(item, 3);
+        // 号码额外字段
+        item.num = item.id;
+        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，冷门小补偿，近期惩罚
+        let coldBonus = (item.freq === 0) ? 2 : 0;
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
+        item.score = item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
+    });
+
+    // ★ 步骤3：使用统一引擎选择
+    // 号码专用评分：频率×10 + √遗漏×2 + 连续遗漏×0.2 + 冷门补偿(2) - 近期惩罚(×8)
+    let numScoreFn = (item) => {
+        let coldBonus = (item.freq === 0) ? 2 : 0;  // 0次号小补偿
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 8 : 0;  // 近期开出惩罚（加大）
+        return item.freq * 10 + Math.sqrt(item.miss) * 2 + item.consecutiveMiss * 0.2 + coldBonus - recentPenalty;
+    };
+
+    let result = unifiedSelect(stats, {
+        count: count,
+        quotas: { overheat: 0, hot: 5, warm: 5, cold: 5 },  // 原始配额：均衡分配
+        scoreFn: numScoreFn,
+        preferWarmingFor: ['warm', 'cold'],
+        pureRankCategories: ['cold', 'warm'],  // ★ cold和warm都：纯分数排名
+        displayLevels: { core: 5, supplement: 10 }  // 🔥前5 ⭐6-10 💎11-15
+    });
+
+    return result;
+}
+
+function getHotZodiacs(history, count = 4) {
+    // 12生肖列表
+    const ALL_ZODIACS = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'];
+
+    // 获取原始数据（用于期号计算）
+    let rawData = null;
+    try {
+        rawData = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+    } catch(e) {}
+
+    // ★ 步骤1：计算统计
+    let stats = calculateStats(
+        history,
+        (period) => getZodiac(period[6]),  // 提取特码对应的生肖
+        ALL_ZODIACS,
+        rawData
+    );
+
+    // ★ 步骤2：分类 + 回温检测
+    let thresholds = { overheat: 0.14, hot: 0.10, warm: 0.06 };  // 生肖原阈值
+    stats.forEach(item => {
+        item.category = categorizeByFreq(item, thresholds);
+        item.isWarmingUp = checkWarmingUp(item, 3);
+        // 生肖额外字段
+        item.zodiac = item.id;
+        // ★ 计算评分（用于显示）：频率权重高，遗漏次要，近期惩罚
+        let zodiacRecentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
+        item.score = item.freq * 4 + Math.sqrt(item.miss) * 2 - zodiacRecentPenalty;
+    });
+
+    // ★ 步骤3：使用统一引擎选择
+    // 生肖专用评分：频率×4 + √遗漏×2 - 近期惩罚(×5)
+    let zodiacScoreFn = (item) => {
+        let recentPenalty = (item.miss <= 2) ? (2 - item.miss) * 5 : 0;  // 生肖惩罚（加大）
+        return item.freq * 4 + Math.sqrt(item.miss) * 2 - recentPenalty;
+    };
+
+    let result = unifiedSelect(stats, {
+        count: count,
+        quotas: { overheat: 0, hot: 1, warm: 2, cold: 1 },  // 生肖原配额
+        scoreFn: zodiacScoreFn,  // 使用带近期惩罚的评分
+        preferWarmingFor: ['warm', 'cold'],
+        displayLevels: { core: 1, supplement: 3 }  // 生肖：🔥1个 ⭐2个 💎1个
+    });
+
+    return result;
+}
+
+function renderTm(result, currentPeriod, precomputedData=null) {
+    // ★ 记录当前显示的期号（用于云端加载后重新渲染）
+    window.currentDisplayPeriod = currentPeriod;
+
+    let top30 = [...(result.top || [])].sort((a, b) => a - b);
+    let kill = [...(result.kill || [])].sort((a, b) => a - b);
+
+    // ★ 获取最新开奖期号，用于判断是否为历史期
+    let latestQishu = 0;
+    try {
+        let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (raw && raw.length > 0) {
+            latestQishu = Number(raw[0].qishu) || 0;
+        }
+    } catch (e) {}
+
+    // ★ 核心判断：只有明确知道是当前期才计算！
+    // 保守策略：默认当历史期处理，避免误判导致覆盖云端数据
+    let hasCacheData = (latestQishu > 0);
+    let isCurrentPeriod = hasCacheData && (currentPeriod > latestQishu);
+
+    // ★ 统一从tmHistory读取（保持单一数据源，避免两个存储不同步）
+    let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    let historyRecord = tmHistory.find(item => item.expect === currentPeriod);
+
+    let nums, zodiacResult;
+
+    // ★ 新增：检查是否已有保存的推荐（即使开奖了也不重算）
+    let hasSavedRecommendation = historyRecord && historyRecord.nums && historyRecord.nums.length > 0;
+
+    if (!isCurrentPeriod || hasSavedRecommendation) {
+        // ★ 情况1：历史期（已开奖）
+        // ★ 情况2：当前期但有保存的推荐（防止开奖后重算覆盖）
+        // → 只读取保存的数据，绝不重新计算！
+        if (hasSavedRecommendation) {
+            nums = historyRecord.nums;
+            zodiacResult = historyRecord.zodiacNums || [];
+        } else {
+            // 无保存数据：显示空，不计算不保存
+            nums = [];
+            zodiacResult = [];
+        }
+    } else {
+        // ★ 确认是当前期（未开奖）：优先使用预计算数据
+        if (precomputedData && precomputedData.nums && precomputedData.nums.length > 0) {
+            // ★ 使用showTmAnalysis传入的预计算数据（保证显示和保存一致）✅
+            nums = precomputedData.nums;
+            zodiacResult = precomputedData.zodiacNums || [];
+        } else if (historyRecord && historyRecord.nums && historyRecord.nums.length > 0) {
+            // 有缓存 → 检查数据版本是否变化
+            let currentDataPeriod = 0;
+            try {
+                let rawHistory = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+                if (rawHistory && rawHistory.length > 0) {
+                    currentDataPeriod = Math.max(...rawHistory.map(item => {
+                        let period = item.qishu || item.expect || item.period || 0;
+                        return parseInt(period) || 0;
+                    }));
+                }
+            } catch (e) {}
+
+            let cacheBasedOnPeriod = historyRecord?.basedOnPeriod || 0;
+
+            if (cacheBasedOnPeriod === currentDataPeriod && currentDataPeriod > 0) {
+                // ✅ 数据没变 → 用缓存（稳定不变）
+                nums = historyRecord.nums;
+                zodiacResult = historyRecord.zodiacNums || [];
+            } else {
+                // ❌ 数据更新了 → 重算
+                let history = [];
+                try {
+                    let raw = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+                    history = getHistory(raw);
+                } catch (e) {}
+
+                nums = getHotNumbers(history);
+                zodiacResult = getHotZodiacs(history);
+            }
+        }
+    }
+    let label = `热号15码`;
+
+    // ★ 注意：保存逻辑已移到 showTmAnalysis() 中统一处理
+    // renderTm 只负责显示，不再保存（避免二次覆盖导致数据丢失）
+    
+    // ★ 分层格式化号码显示（方案B：组首标图标）
+    let shownLevels = new Set();  // 记录已显示图标的层级
+    let numsHtml = nums.map((item, index) => {
+        let num = item.num || item;  // 兼容旧格式
+        let level = item.level || 'normal';
+        let score = item.score ?? '?';
+        let category = item.category || '';
+        
+        // ★ 只在该层级的第一个元素前加图标
+        let prefix = '';
+        if (!shownLevels.has(level)) {
+            if (level === 'core') prefix = '🔥';
+            else if (level === 'supplement') prefix = '⭐';
+            else if (level === 'cold') prefix = '💎';
+            shownLevels.add(level);
+        }
+        
+        // PC端title悬停 + 手机端点击显示（精简版：只显示评分和分类）
+        let title = `号码${num}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
+        let freq = item.freq ?? 0;
+        let miss = item.miss ?? 0;
+        let consec = item.consecutiveMiss ?? 0;
+        return `<span style="cursor:pointer" onclick="showNumDetail(this, '${num}', ${freq}, ${miss}, ${consec}, ${score})" title="${title}">${prefix}${num}</span>`;
+    }).join(' ');
+    
+    // ★ 分层格式化生肖显示（方案B：组首标图标）
+    let shownZodiacLevels = new Set();
+    let zodiacHtml = zodiacResult.map((item, index) => {
+        let zodiac = item.zodiac;
+        let level = item.level || 'normal';
+        let score = item.score ?? '?';
+        let category = item.category || '';
+        
+        let prefix = '';
+        if (!shownZodiacLevels.has(level)) {
+            if (level === 'core') prefix = '🔥';
+            else if (level === 'supplement') prefix = '⭐';
+            else if (level === 'cold') prefix = '💎';
+            shownZodiacLevels.add(level);
+        }
+        
+        let title = `生肖${zodiac}: ${category} | 评分${typeof score === 'number' ? score.toFixed(1) : score}`;
+        let zFreq = item.freq ?? 0;
+        let zFreqRate = item.freqRate ?? 0;
+        let zMiss = item.miss ?? 0;
+        return `<span style="cursor:pointer" onclick="showZodiacDetail(this, '${zodiac}', ${zFreq}, ${zFreqRate}, ${zMiss}, ${score})" title="${title}">${prefix}${zodiac}</span>`;
+    }).join(' ');
+    
+    document.getElementById("tmOut").innerHTML = `
+    <div class="card tm">
+    🔥 当前${currentPeriod}期分析<br><br>
+    🎯 号码推荐：<span style="word-break:break-all;">${numsHtml}</span><br>
+    <!--<small style="color:#666;">(🔥核心5个 ⭐补充5个 💎观察5个)</small><br>--><br>
+    🐭 生肖推荐：<span style="word-break:break-all;">${zodiacHtml}</span><br>
+    <!--<small style="color:#666;">(🔥必选 ⭐备选 💎观察)</small><br>-->
+    </div>`;
+}
+
+// ★ 手机端/PC端 点击显示号码详情
+function showNumDetail(el, num, freq, miss, consecMiss, score) {
+    // 移除其他已打开的详情框
+    let old = document.getElementById('numDetailPopup');
+    if (old) old.remove();
+    
+    let popup = document.createElement('div');
+    popup.id = 'numDetailPopup';
+    popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
+    popup.innerHTML = `
+        <div style="font-size:24px;font-weight:bold;color:#e74c3c;margin-bottom:10px;">${num}号</div>
+        <div style="color:#333;line-height:1.8;">
+            频率：<b>${freq}</b> 次<br>
+            总遗漏：<b>${miss}</b> 期<br>
+            连续遗漏：<b>${consecMiss}</b> 期<br>
+            综合评分：<b>${score.toFixed(1)}</b> 分
+        </div>
+        <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
+    `;
+    document.body.appendChild(popup);
+    
+    // 点击背景关闭
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 100);
+}
+
+// ★ 手机端/PC端 点击显示生肖详情
+function showZodiacDetail(el, zodiac, freq, freqRate, miss, score) {
+    let old = document.getElementById('numDetailPopup');
+    if (old) old.remove();
+    
+    let popup = document.createElement('div');
+    popup.id = 'numDetailPopup';
+    popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;text-align:center;min-width:200px;';
+    popup.innerHTML = `
+        <div style="font-size:24px;font-weight:bold;color:#3498db;margin-bottom:10px;">🐭 ${zodiac}</div>
+        <div style="color:#333;line-height:1.8;">
+            频率：<b>${freq}</b> 次<br>
+            出现率：<b>${(freqRate * 100).toFixed(1)}</b>%<br>
+            遗漏：<b>${miss}</b> 期<br>
+            综合评分：<b>${score.toFixed(1)}</b> 分
+        </div>
+        <div style="margin-top:15px;padding:8px 20px;background:#f0f0f0;border-radius:6px;font-size:14px;color:#666;" onclick="this.parentElement.remove()">点击关闭</div>
+    `;
+    document.body.appendChild(popup);
+    
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 100);
+}
+
+async function generateBets(){
+    if(!currentAnalysis){
+        await showTmAnalysis(false);
+    }
+    if(!currentAnalysis){
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 请先刷新特码分析</div>`;
+        return;
+    }
+
+    // ⭐ 直接用热号15码生成投注方案（提取纯号码 + 保留层级）
+    let hot15 = currentAnalysis.nums || [];
+    if (hot15.length === 0) {
+        document.getElementById("betOut").innerHTML = `<div class="card tm">⚠️ 暂无推荐号码</div>`;
+        return;
+    }
+    
+    // ★ 按层级分组
+    let levelGroups = { core: [], supplement: [], cold: [] };
+    let levelLabels = { core: '🔥 核心', supplement: '⭐ 补充', cold: '💎 观察' };
+    
+    hot15.forEach(item => {
+        let num = item.num || item;
+        let level = item.level || 'normal';
+        if (levelGroups[level]) {
+            levelGroups[level].push(num);
+        } else {
+            levelGroups['supplement'].push(num);  // 兼容旧格式
+        }
+    });
+
+    let html = `<div class="card tm">💰 投注方案（${hot15.length}码）<br><br>`;
+
+    // ★ 按层级显示
+    for (let [level, nums] of Object.entries(levelGroups)) {
+        if (nums.length > 0) {
+            html += `${levelLabels[level]}：${nums.join(", ")}<br>`;
+        }
+    }
+
+    // 也可以显示全部号码
+    let allNums = hot15.map(item => item.num || item);
+    html += `<br>📊 全部号码：${allNums.join(", ")}<br>`;
+    html += `</div>`;
+
+    document.getElementById("betOut").innerHTML = html;
+}
+
+// ===== 开奖 =====
+async function loadHistory(){
+    if(loading) return;
+    loading = true;
+
+    let box = document.getElementById("history");
+    box.innerHTML = "⏳ 正在加载历史开奖数据...";
+    await new Promise(r => setTimeout(r, 300));
+    let list = await fetchData();
+    if(!list || !list.length){
+        box.innerHTML = "⚠️ 数据获取失败，请稍后再试";
+        loading = false;
+        return;
+    }
+
+    let html=`<div class="card tm"><b>📊 最近${hisKjDataSize}期开奖数据</b><br>`;
+
+    list.slice(0, hisKjDataSize).forEach(i => {
+        if(!i || !i.num) return;
+        let nums = i.num.split(',').map(Number);
+        // let display = nums.map(n => `${n}(${getZodiac(n)}${getBoseColor(n)})`).join(' ');
+        let display = nums.map(n => {
+            let color = getBoseColor(n);  // 返回 #e74c3c
+            return `<span style="color:${color}">${n}(${getZodiac(n)})</span>`;
+        }).join(' ');
+        html += `<b>${i.qishu}期</b> <span style="white-space:nowrap;">${display}</span><br><br>`;
+    });
+    html+=`</div>`;
+    box.innerHTML = html;
+    loading = false;
+}
+
+// ★ 统一解析数据数组：处理各种格式（支持多层嵌套字符串）
+function parseDataArray(arr) {
+    if (!arr) return [];
+    
+    // 情况1: 整个是字符串
+    if (typeof arr === 'string') {
+        try { arr = JSON.parse(arr); } catch(e) { 
+            console.error("parseDataArray 解析失败:", arr.substring(0, 100));
+            return []; 
+        }
+    }
+    if (!Array.isArray(arr)) return [];
+    
+    return arr.map((item, idx) => {
+        // 已经是对象且不是字符串
+        if (typeof item === 'object' && item !== null) {
+            // 额外检查：确保 .num 不是字符串格式的对象
+            if (item.num && typeof item.num === 'string' && item.num.startsWith('{')) {
+                try { item.num = JSON.parse(item.num).num; } catch(e) {}
+            }
+            return item;
+        }
+        
+        // 是字符串，尝试解析（最多尝试2次，处理双重序列化）
+        if (typeof item === 'string') {
+            item = item.trim();
+            let parsed = item;
+            // 第一次解析
+            if (parsed.startsWith('{') || parsed.startsWith('[')) {
+                try { parsed = JSON.parse(parsed); } catch(e) {}
+            }
+            // 检查是否还需要第二次解析
+            if (typeof parsed === 'string' && (parsed.startsWith('{') || parsed.startsWith('['))) {
+                try { parsed = JSON.parse(parsed); } catch(e) {}
+            }
+            // 如果最终是对象，返回
+            if (typeof parsed === 'object' && parsed !== null) return parsed;
+            // 否则包装
+            return { num: Number(parsed) || parsed, level: 'normal' };
+        }
+        
+        // 其他类型
+        return { num: item, level: 'normal' };
+    });
+}
+
+async function showTmHistory(){
+    // ★ 缓存策略：本地缓存加速 + 云端保证多端一致
+    let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+    
+    // ★ 有云端配置时，拉取最新数据覆盖本地（确保多端一致）
+    if (CLOUD_API_KEY) {
+        try {
+            const binId = getCloudBinId();
+            if (binId) {
+                const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+                    headers: { "X-Master-Key": CLOUD_API_KEY }
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    let cloudData = Array.isArray(result.record) ? result.record : [];
+                    if (cloudData.length > 0) {
+                        list = cloudData;
+                        // ★ 更新本地缓存（下次秒开）
+                        localStorage.setItem("tmHistory", JSON.stringify(list));
+                    }
+                }
+            }
+        } catch(e) {
+            console.log("云端读取失败，使用本地缓存:", e.message);
+        }
+    }
+    
+    // 获取当前最新开奖期号，只显示历史期次（已开奖的）
+    let latestQishu = 0;
+    try {
+        const data = await fetchData();
+        if (data && data.length > 0) {
+            latestQishu = parseInt(data[0].qishu) || 0;
+        }
+    } catch(e) {}
+    
+    // 过滤：只显示已开奖的历史记录（expect <= 最新开奖期号）
+    list = list.filter(i => i.expect && i.expect <= latestQishu).slice(0,fupanSize);
+    
+    if(!list.length){
+        document.getElementById("tmHistory").innerHTML = "暂无历史投注数据";
+        return;
+    }
+
+    let box = document.getElementById("tmHistory");
+    
+    // ★ 自动修复历史数据格式（字符串→对象）
+    let needSave = false;
+    list.forEach(i => {
+        // 修复 numsWithLevel - 尝试各种可能的错误格式
+        if (i.numsWithLevel) {
+            // 情况1: 整个数组被序列化成字符串
+            if (typeof i.numsWithLevel === 'string') {
+                try { 
+                    i.numsWithLevel = JSON.parse(i.numsWithLevel); 
+                    needSave = true; 
+                } catch(e) {}
+            }
+            // 情况2: 数组中每个元素是字符串格式的对象
+            if (Array.isArray(i.numsWithLevel) && i.numsWithLevel.length > 0) {
+                let first = i.numsWithLevel[0];
+                if (typeof first === 'string') {
+                    i.numsWithLevel = i.numsWithLevel.map(item => {
+                        try { return JSON.parse(item); } catch(e) { return item; }
+                    });
+                    needSave = true;
+                }
+            }
+        }
+        // 修复 zodiacsWithLevel - 同样处理
+        if (i.zodiacsWithLevel) {
+            if (typeof i.zodiacsWithLevel === 'string') {
+                try { 
+                    i.zodiacsWithLevel = JSON.parse(i.zodiacsWithLevel); 
+                    needSave = true; 
+                } catch(e) {}
+            }
+            if (Array.isArray(i.zodiacsWithLevel) && i.zodiacsWithLevel.length > 0) {
+                let first = i.zodiacsWithLevel[0];
+                if (typeof first === 'string') {
+                    i.zodiacsWithLevel = i.zodiacsWithLevel.map(item => {
+                        try { return JSON.parse(item); } catch(e) { return item; }
+                    });
+                    needSave = true;
+                }
+            }
+        }
+    });
+    // 如果有修复，重新保存
+    if (needSave) {
+        localStorage.setItem("hot15History", JSON.stringify(list));
+        console.log("✅ 已自动修复历史数据格式");
+    }
+    
+    let html = `<div class="card tm">📊 历史投注结果 ${list.length}期<br>`;
+    list.forEach(i=>{
+      html += `<div style="margin-bottom:10px;">${i.expect}期`;
+      
+      // 如果open为null，显示待更新提示
+      if (i.open === null || i.open === undefined) {
+          html += ` <span style="color:#999;font-size:11px;">（⏳ 开奖结果待更新）</span>`;
+      } else {
+          let openZodiac = getZodiac(i.open);
+          html += ` <span style="color:#999;font-size:11px;">开奖：${i.open}（${openZodiac}）</span>`;
+      }
+      html += `<br>`;
+      
+      if (i.top && i.top.length > 0) {
+          html += `📝 Top${i.top.length}：<span style="word-break:break-all;">${[...i.top].sort((a,b)=>a-b).join(",")}</span><br>`;
+      }
+      
+      // ★ 号码推荐：支持分层显示（兼容新旧格式）
+      let numsData = i.nums || [];
+      // ★ 兼容旧格式：如果是纯数字数组，转为对象
+      if (numsData.length > 0 && typeof numsData[0] !== 'object') {
+          numsData = numsData.map(n => ({num: n, level: 'normal', score: 0}));
+      }
+      let numsHtml = numsData.map(item => {
+          // ★ 提取num：处理各种嵌套格式
+          let num = item.num;
+          
+          // 如果num是对象（双重嵌套），从中提取真正值
+          while (typeof num === 'object' && num !== null) {
+              num = num.num || num.number || num.n || num.value || num.zodiac || num.name;
+          }
+          if (num === undefined || num === null) num = '?';
+          
+          let isHit = Number(num) === i.open;
+          return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${num}</b>` : num;
+      }).join(', ');
+      html += `🎯 号码推荐：${numsHtml}<br>`;
+      
+      // ★ 生肖推荐：支持分层显示（兼容新旧格式）
+      let openZodiac = getZodiac(i.open);
+      let zodiacData = i.zodiacNums || [];
+      // ★ 兼容旧格式：如果是纯字符串数组，转为对象
+      if (zodiacData.length > 0 && typeof zodiacData[0] !== 'object') {
+          zodiacData = zodiacData.map(z => ({zodiac: z, level: 'normal', score: 0}));
+      }
+      let zodiacHtml = zodiacData.map(item => {
+          // ★ 提取zodiac：处理各种嵌套格式
+          let z = item.zodiac || item.name;
+          
+          // 如果z是对象（双重嵌套），从中提取真正值
+          while (typeof z === 'object' && z !== null) {
+              z = z.zodiac || z.name || z.num || z.number;
+          }
+          if (z === undefined || z === null) z = '?';
+          
+          let isHit = z === openZodiac;
+          return isHit ? `<b style="color:#ff5722;background:#fff3e0;padding:1px 4px;border-radius:3px;">${z}</b>` : z;
+      }).join(' ') || '';
+      html += `🐭 生肖推荐：${zodiacHtml}<br>`;
+      if (i.nums.length === 0) {
+          html += "⚠️ 无预测";
+      } else if (i.open === null || i.open === undefined) {
+          // 未开奖的显示提示
+          html += `📌 推荐已生成，等待开奖结果`;
+      } else {
+          // ★ 实时计算命中（兼容数字/字符串/对象类型）
+          let checkHit = (arr, target) => {
+              if (!arr || !target) return false;
+              let targetStr = String(target).trim();
+              return arr.some(item => {
+                  // 兼容对象格式 {num: 16, ...} 或纯数字 16
+                  let itemVal = (item && typeof item === 'object') ? (item.num || item.zodiac || item) : item;
+                  return String(itemVal).trim() === targetStr;
+              });
+          };
+          html += checkHit(i.nums, i.open) ? "✅号码命中" : "❌号码未中";
+          html += "　｜　";
+          let openZodiac = getZodiac(i.open);
+          html += checkHit(i.zodiacNums, openZodiac) ? "✅生肖命中" : "❌生肖未中";
+      }
+      html += `</div><hr>`;
+    });
+    html += `</div>`;
+    box.innerHTML = html;
+    
+    // 静默补全缺失的开奖结果（不刷新页面，避免闪烁）
+    silentUpdateMissingResults(list);
+}
+
+// 静默补全缺失的开奖结果（不触发界面刷新）
+async function silentUpdateMissingResults(list) {
+    const needUpdate = list.filter(i => (i.open === null || i.open === undefined) && i.expect);
+    if (needUpdate.length === 0) return;
+
+    try {
+        const data = await fetchData();
+        let updated = false;
+        
+        for (let item of needUpdate) {
+            const found = data.find(d => d.qishu == item.expect);
+            if (found && found.num) {
+                // 解析num字段（兼容多种格式）
+                let nums;
+                if (Array.isArray(found.num)) {
+                    nums = found.num;
+                } else if (typeof found.num === 'string') {
+                    // 处理字符串格式，可能包含 "+" 号
+                    nums = found.num.replace(/\+/g, '').split(',').map(n => parseInt(n.trim()));
+                }
+                
+                if (nums && nums.length >= 7) {
+                    // 取最后一个作为特码（第7个号码）
+                    let teCode = nums[nums.length - 1];
+                    
+                    // 验证特码是否有效（1-49）
+                    if (teCode >= 1 && teCode <= 49) {
+                        item.open = teCode;
+                        item.hitNums = item.nums.includes(item.open);
+                        let openZodiac = getZodiac(item.open);
+                        item.hitZodiac = (item.zodiacNums || []).includes(openZodiac);
+                        updated = true;
+                    } else {
+                        // 特码无效，跳过
+                    }
+                } else {
+                    // 号码数量不足，跳过
+                }
+            }
+        }
+        
+        if (updated) {
+            // 保存更新后的数据（静默保存，不刷新界面）
+            localStorage.setItem("tmHistory", JSON.stringify(list));
+
+            // 同步到云端
+            saveToCloud(list).catch(e => {});
+        }
+
+    } catch (e) {
+        // 补全失败，忽略
+    }
+}
+
+async function updateMarquee(latestData) {
+  let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+  let el = document.getElementById("marqueeText");
+  
+  // 如果没有传入数据，先显示默认文字，尝试异步更新
+  if (!latestData) {
+    el.innerHTML = base + "　　" + base;
+    try {
+      let raw = await fetchData();
+      if (raw && raw[0]) {
+        latestData = raw[0];
+      } else {
+        return; // 数据无效，保持默认文字
+      }
+    } catch (e) {
+      return; // 保持默认文字不变
+    }
+  }
+  
+  try {
+    let latest = latestData;
+    let lastId = localStorage.getItem("marqueeLastId");
+    let numsHtml = formatNums(latest.num);
+    let text = "";
+    // ⭐ 判断是否新开奖
+    if (lastId != latest.id) {
+      text = `${base}　　<span class="highlight">🆕 新开奖：${latest.qishu}期（${latest.date}）${numsHtml}</span>`;
+      localStorage.setItem("marqueeLastId", latest.id);
+    } else {
+      text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
+    }
+    // ⭐ 双倍拼接（无缝滚动）
+    el.innerHTML = text + "　　" + text;
+  } catch (e) {
+    el.innerHTML = base + "　　" + base;
+  }
+}
+
+// 每天9点和10点自动刷新
+function scheduleRefresh() {
+    let now = new Date();
+    let next9 = new Date();
+    next9.setHours(9, 0, 0, 0);
+    let next10 = new Date();
+    next10.setHours(18, 0, 0, 0);
+
+    let targets = [next9, next10];
+    for (let t of targets) {
+        if (t <= now) t.setDate(t.getDate() + 1);
+    }
+    let next = targets[0] < targets[1] ? targets[0] : targets[1];
+    let delay = next - now;
+
+    setTimeout(() => {
+        location.reload();
+    }, delay);
+}
+
+// ==================== 云端自动同步（JSONBin.io）====================
+
+// ⚠️ 配置：在这里填入你的 JSONBin.io API Key
+// 获取方式：https://jsonbin.io/login → 用GitHub登录 → Create New API Key
+const CLOUD_API_KEY = "$2a$10$idmr3285C98hx3Uv/D8n8.64MRmWVxMPV4LlqvqlTbLJZ85pebfCa";  // ← API Key
+const CLOUD_BIN_ID = "6a9e7340ac6210605aaeb7c2";  // ← 硬编码binId，避免重复创建
+const JSONBIN_API_URL = "https://api.jsonbin.io/v3";
+
+// 获取存储的binId（优先使用硬编码值）
+function getCloudBinId() {
+  return CLOUD_BIN_ID || "";
+}
+
+// 从云端加载历史推荐（页面打开时自动调用）
+async function loadFromCloud() {
+  if (!CLOUD_API_KEY) {
+    return null;
+  }
+  
+  const binId = getCloudBinId();
+  if (!binId) {
+    return null;
+  }
+  
+  try {
+    const res = await fetch(`${JSONBIN_API_URL}/b/${binId}/latest`, {
+      headers: { "X-Master-Key": CLOUD_API_KEY }
+    });
+    
+    if (!res.ok) {
+      return null;
+    }
+    
+    const result = await res.json();
+    const cloudData = result.record;
+    
+    if (cloudData && Array.isArray(cloudData)) {
+      // 获取本地数据用于智能合并
+      let localData = [];
+      try {
+        localData = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+      } catch(e) {}
+      
+      // 智能合并：对于每期数据，优先保留有open值（已开奖）的版本
+      const mergedData = [];
+      const processedExpects = new Set();
+      
+      // 先处理云端数据
+      for (const cloudItem of cloudData) {
+        if (!cloudItem.expect) continue;
+        
+        const localItem = localData.find(i => i.expect === cloudItem.expect);
+        let finalItem = { ...cloudItem };
+        
+        if (localItem) {
+          // 合并策略：优先保留有有效open值的版本
+          const cloudHasOpen = cloudItem.open !== null && cloudItem.open !== undefined && cloudItem.open !== 0;
+          const localHasOpen = localItem.open !== null && localItem.open !== undefined && localItem.open !== 0;
+          
+          if (localHasOpen && !cloudHasOpen) {
+            // 本地有open值，云端没有 → 用本地的open
+            finalItem.open = localItem.open;
+            finalItem.hitNums = localItem.hitNums;
+            finalItem.hitZodiac = localItem.hitZodiac;
+          } else if (localHasOpen && cloudHasOpen && localItem.open !== cloudItem.open) {
+            // 两边都有open但值不同 → 保留本地的（假设本地是最新修复过的）
+            finalItem.open = localItem.open;
+            finalItem.hitNums = localItem.hitNums;
+            finalItem.hitZodiac = localItem.hitZodiac;
+          }
+          
+          // 合并nums/zodiacNums
+          // ★ 通用保护：所有已开奖的历史期，保留本地已有的推荐数据，不覆盖
+          let isHistoryPeriod = (finalItem.open !== null && finalItem.open !== undefined) || 
+                                (localItem.open !== null && localItem.open !== undefined);
+          
+          if (isHistoryPeriod && localItem.nums && localItem.nums.length > 0) {
+            // 历史期：优先用本地的推荐数据（防止被错误覆盖）
+            finalItem.nums = localItem.nums;
+            finalItem.zodiacNums = localItem.zodiacNums || finalItem.zodiacNums;
+          } else if ((!finalItem.nums || finalItem.nums.length === 0) && (localItem.nums && localItem.nums.length > 0)) {
+            // 当前期或空数据：正常合并
+            finalItem.nums = localItem.nums;
+          }
+          if ((!finalItem.zodiacNums || finalItem.zodiacNums.length === 0) && (localItem.zodiacNums && localItem.zodiacNums.length > 0)) {
+            finalItem.zodiacNums = localItem.zodiacNums;
+          }
+        }
+        
+        mergedData.push(finalItem);
+        processedExpects.add(cloudItem.expect);
+      }
+      
+      // 添加本地有但云端没有的记录
+      for (const localItem of localData) {
+        if (localItem.expect && !processedExpects.has(localItem.expect)) {
+          mergedData.push(localItem);
+        }
+      }
+
+      // 按期号排序（新的在前）
+      mergedData.sort((a, b) => (b.expect || 0) - (a.expect || 0));
+
+      // 保存合并后的数据
+      localStorage.setItem("tmHistory", JSON.stringify(mergedData));
+      
+      // ★ 同步到 hot15History（用于历史期显示）
+      let hot15History = JSON.parse(localStorage.getItem("hot15History") || "[]");
+      let needUpdate = false;
+      
+      for (const cloudItem of mergedData) {
+        if (!cloudItem.expect || !cloudItem.nums) continue;
+        
+        // ★ 通用保护：历史期（已开奖）保留本地数据
+        let isHistoryPeriod = (cloudItem.open !== null && cloudItem.open !== undefined);
+        let localRecord = hot15History.find(i => i.expect === cloudItem.expect);
+        let localHasData = localRecord && localRecord.nums && localRecord.nums.length > 0;
+        
+        if (isHistoryPeriod && localHasData) {
+          // 历史期且本地有数据 → 跳过云端，保留本地
+          continue;
+        }
+        
+        let localIdx = hot15History.findIndex(i => i.expect === cloudItem.expect);
+        if (localIdx === -1) {
+          // 本地没有 → 添加
+          hot15History.push(cloudItem);
+          needUpdate = true;
+        } else if (!hot15History[localIdx].nums || hot15History[localIdx].nums.length === 0) {
+          // 本地为空 → 用云端数据更新
+          hot15History[localIdx] = cloudItem;
+          needUpdate = true;
+        }
+      }
+      
+      if (needUpdate) {
+        // 按期号排序
+        hot15History.sort((a, b) => (b.expect || 0) - (a.expect || 0));
+        localStorage.setItem("hot15History", JSON.stringify(hot15History));
+        
+        // ★ 重新渲染当前期（让历史期能正确显示云端数据）
+        if (window.currentDisplayPeriod) {
+          renderTm({top: [], kill: []}, window.currentDisplayPeriod);
+        }
+      }
+      
+      return mergedData;
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 保存数据到云端（生成推荐/开奖更新时自动调用）
+async function saveToCloud(data) {
+  if (!CLOUD_API_KEY) {
+    return false;
+  }
+  
+  try {
+    const binId = getCloudBinId();
+    let url, method;
+    
+    if (binId) {
+      // 更新现有存储
+      url = `${JSONBIN_API_URL}/b/${binId}`;
+      method = "PUT";
+    } else {
+      // 创建新存储
+      url = `${JSONBIN_API_URL}/b`;
+      method = "POST";
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": CLOUD_API_KEY,
+        "X-Bin-Name": "luhecai-recommend-history"
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || "保存失败");
+    }
+    
+    const result = await res.json();
+    return true;
+
+  } catch (e) {
+    return false;
+  }
+}
+
+// 强制刷新：清除缓存并重新获取数据
+async function forceRefresh() {
+    let box = document.getElementById("indexOut");
+    box.innerHTML = "🔄 正在强制刷新，清除旧缓存...";
+    
+    // 清除所有缓存
+    localStorage.removeItem("cacheHistory");
+    localStorage.removeItem("cacheHistoryTime");
+
+    try {
+        // 强制刷新获取最新数据
+        const data = await fetchData(true);  // true = 强制刷新
+        
+        if (data && data.length > 0) {
+            box.innerHTML = "";
+            updateMarquee(data[0]);  // 传入已获取的数据
+            await showTmAnalysis();
+            alert(`✅ 刷新成功！\n\n当前期号：${data[0].qishu}期\n数据时间：${new Date().toLocaleTimeString()}`);
+        } else {
+            box.innerHTML = "⚠️ 获取数据失败，请检查网络";
+        }
+    } catch(e) {
+        box.innerHTML = "❌ 刷新失败：" + e.message;
+    }
+}
+
+// 修复所有历史数据的特码和命中结果
+async function fixAllHistoryData() {
+    let box = document.getElementById("indexOut");
+    
+    if (!confirm("🔧 确定要修复所有历史数据吗？\n\n这将：\n1. 强制获取最新开奖数据\n2. 重新计算每期的特码（取最后一个号码）\n3. 更新所有命中结果\n4. 保存到本地并同步云端")) {
+        return;
+    }
+    
+    box.innerHTML = "🔧 正在修复历史数据，请稍等...";
+    
+    try {
+        // 1. 获取历史记录
+        let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+
+        if (list.length === 0) {
+            alert("没有历史数据需要修复");
+            return;
+        }
+
+        // 2. 获取最新开奖数据（强制刷新，不用缓存）
+        box.innerHTML = "🔧 步骤1/4: 正在强制获取最新开奖数据...";
+
+        const data = await fetchData(true);  // true = 强制刷新
+
+        if (!data || data.length === 0) {
+            alert("❌ 无法获取开奖数据，请检查网络连接\n\n可能需要点击多次重试");
+            return;
+        }
+
+        // 3. 逐期修复
+        box.innerHTML = "🔧 步骤2/4: 正在重新计算特码和命中结果...";
+        let fixedCount = 0;
+        let errorCount = 0;
+        let skipCount = 0;
+        
+        for (let item of list) {
+            const found = data.find(d => d.qishu == item.expect);
+            
+            if (found && found.num) {
+                // 解析号码（兼容数组和字符串）
+                let nums;
+                if (Array.isArray(found.num)) {
+                    nums = found.num.map(n => parseInt(n));
+                } else if (typeof found.num === 'string') {
+                    // 去除所有非数字字符，然后分割
+                    nums = found.num.replace(/[^0-9,]/g, '').split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                }
+
+                if (nums && nums.length >= 7) {
+                    // 取最后一个作为特码
+                    let newOpenNum = nums[nums.length - 1];
+                    
+                    // 验证特码有效性（1-49）
+                    if (newOpenNum >= 1 && newOpenNum <= 49) {
+                        let oldOpen = item.open;
+                        
+                        // 强制更新（不管是否相同）
+                        item.open = newOpenNum;
+                        
+                        // 重新计算命中结果
+                        item.hitNums = (item.nums || []).includes(item.open);
+                        let openZodiac = getZodiac(item.open);
+                        item.hitZodiac = (item.zodiacNums || []).includes(openZodiac);
+                        
+                        if (oldOpen !== newOpenNum) {
+                            fixedCount++;
+                        } else {
+                            skipCount++;
+                        }
+                    } else {
+                        // 特码无效
+                        errorCount++;
+                    }
+                } else {
+                    // 号码数量不足
+                    errorCount++;
+                }
+            } else {
+                // API中未找到该期数据
+            }
+        }
+
+        // 4. 保存修复后的数据
+        box.innerHTML = "🔧 步骤3/4: 正在保存到本地存储...";
+        localStorage.setItem("tmHistory", JSON.stringify(list));
+
+        // 5. 同步到云端
+        box.innerHTML = "🔧 步骤4/4: 正在同步到云端...";
+        let cloudResult = await saveToCloud(list);
+        
+        // 6. 强制刷新显示
+        box.innerHTML = "";
+        updateMarquee(data[0]);  // 传入已获取的数据
+        await showTmAnalysis();  // 这会重新渲染主界面
+        
+        // 手动触发一次历史结果显示（确保使用最新数据）
+        await showTmHistory();   // 强制刷新历史记录
+        
+        // 7. 显示结果
+        alert(`✅ 修复完成！\n\n📊 数据统计：\n• 修复了 ${fixedCount} 条记录\n• 无需修复 ${skipCount} 条\n• 出错 ${errorCount} 条\n\n💾 数据已保存到本地${cloudResult ? '并同步到云端' : '（云端同步失败）'}\n\n请查看"历史投注结果"确认`);
+
+    } catch(e) {
+        box.innerHTML = "❌ 修复失败：" + e.message;
+        alert("❌ 修复失败：" + e.message + "\n\n请查看控制台(F12)了解详情");
+    }
+}
+
+// ★ 通用修复历史期数据（被错误覆盖后恢复）
+async function fixPeriodData(correctData) {
+    try {
+        // 1. 更新本地存储
+        let list = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+        let idx = list.findIndex(i => i.expect === correctData.expect);
+        if (idx >= 0) {
+            list[idx] = correctData;
+        } else {
+            list.push(correctData);
+        }
+        localStorage.setItem("tmHistory", JSON.stringify(list));
+        
+        // 2. 更新hot15History
+        let hot15List = JSON.parse(localStorage.getItem("hot15History") || "[]");
+        let hIdx = hot15List.findIndex(i => i.expect === correctData.expect);
+        if (hIdx >= 0) {
+            hot15List[hIdx] = correctData;
+        } else {
+            hot15List.push(correctData);
+        }
+        localStorage.setItem("hot15History", JSON.stringify(hot15List));
+        
+        // 3. 同步到云端
+        await saveToCloud(list);
+        return true;
+    } catch(e) {
+        console.error(`❌ 修复${correctData.expect}期失败:`, e);
+        return false;
+    }
+}
+
+// ★ 修复253期和254期的正确数据
+async function fixCorruptedPeriods() {
+    // 253期正确数据（开奖16兔）
+    let p253 = {
+        expect: 253,
+        date: "2026-09-11",
+        nums: [
+            {num: 14, level: "core", score: 16.84, category: "warm"},
+            {num: 23, level: "core", score: 24.10, category: "warm"},
+            {num: 30, level: "core", score: 15.30, category: "warm"},
+            {num: 5, level: "core", score: 26.72, category: "warm"},
+            {num: 17, level: "core", score: 33.42, category: "warm"},
+            {num: 1, level: "supplement", score: 41.69, category: "warm"},
+            {num: 26, level: "supplement", score: 37.43, category: "warm"},
+            {num: 16, level: "supplement", score: 32.67, category: "warm"},
+            {num: 49, level: "supplement", score: 25.25, category: "warm"},
+            {num: 9, level: "supplement", score: 24.49, category: "warm"},
+            {num: 41, level: "cold", score: 44.21, category: "cold"},
+            {num: 15, level: "cold", score: 44.21, category: "cold"},
+            {num: 48, level: "cold", score: 32.57, category: "cold"},
+            {num: 38, level: "cold", score: 27.29, category: "cold"},
+            {num: 42, level: "cold", score: 25.42, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "蛇", level: "core", score: 22.83, category: "hot"},
+            {zodiac: "兔", level: "core", score: 20.47, category: "warm"},
+            {zodiac: "狗", level: "supplement", score: 18.00, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 8.00, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 16, hit: true,
+        hitNums: true, hitZodiac: true
+    };
+    
+    // 254期正确数据（不含02）
+    let p254 = {
+        expect: 254,
+        date: "2026-09-11",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 3, level: "core", score: 33.46, category: "warm"},
+            {num: 47, level: "supplement", score: 33.11, category: "warm"},
+            {num: 36, level: "supplement", score: 26.14, category: "cold"},
+            {num: 45, level: "supplement", score: 26.14, category: "cold"},
+            {num: 13, level: "supplement", score: 26.14, category: "cold"},
+            {num: 25, level: "supplement", score: 26.14, category: "cold"},
+            {num: 14, level: "cold", score: 24.06, category: "warm"},
+            {num: 30, level: "cold", score: 23.23, category: "warm"},
+            {num: 12, level: "cold", score: 21.2, category: "warm"},
+            {num: 16, level: "cold", score: 20, category: "warm"},
+            {num: 22, level: "cold", score: 7.2, category: "warm"}
+        ],
+        zodiacNums: [
+            {zodiac: "鼠", level: "core", score: 24.94, category: "warm"},
+            {zodiac: "牛", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "猪", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 7, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 2, hit: true,
+        hitNums: true, hitZodiac: false
+    };
+    
+    await fixPeriodData(p253);
+    await fixPeriodData(p254);
+    
+    // 255期正确数据（开奖44猪，号码命中）
+    let p255 = {
+        expect: 255,
+        date: "2026-09-12",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 3, level: "core", score: 33.46, category: "warm"},
+            {num: 47, level: "supplement", score: 33.11, category: "warm"},
+            {num: 31, level: "supplement", score: 30.5, category: "warm"},
+            {num: 37, level: "supplement", score: 28.8, category: "warm"},
+            {num: 49, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "cold", score: 24.06, category: "cold"},
+            {num: 44, level: "cold", score: 23.23, category: "cold"},
+            {num: 13, level: "cold", score: 21.2, category: "cold"},
+            {num: 25, level: "cold", score: 20, category: "cold"},
+            {num: 33, level: "cold", score: 18.5, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "猴", level: "core", score: 24.94, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "龙", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 7, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 44, hit: true,
+        hitNums: true, hitZodiac: false  // 44命中，但猪不在推荐生肖中
+    };
+    
+    await fixPeriodData(p255);
+    
+    // ★ 256期恢复数据（开奖1马，号码+生肖双命中）
+    let p256 = {
+        expect: 256,
+        date: "2026-09-13",
+        nums: [
+            {num: 1, level: "core", score: 46.18, category: "warm"},
+            {num: 17, level: "core", score: 40.75, category: "warm"},
+            {num: 26, level: "core", score: 37.34, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 47, level: "core", score: 33.11, category: "warm"},
+            {num: 31, level: "supplement", score: 30.5, category: "warm"},
+            {num: 16, level: "supplement", score: 29.5, category: "warm"},
+            {num: 49, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "supplement", score: 24.06, category: "warm"},
+            {num: 48, level: "cold", score: 32.57, category: "cold"},
+            {num: 15, level: "cold", score: 30.0, category: "cold"},
+            {num: 28, level: "cold", score: 27.29, category: "cold"},
+            {num: 34, level: "cold", score: 26.14, category: "cold"},
+            {num: 41, level: "cold", score: 24.06, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "马", level: "core", score: 24.94, category: "hot"},
+            {zodiac: "鼠", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "鸡", level: "cold", score: 8.0, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 1, hit: true,
+        hitNums: true, hitZodiac: true,
+        basedOnPeriod: 255
+    };
+    
+    await fixPeriodData(p256);
+    
+    // ★ 257期恢复数据（开奖7鼠，号码未中，生肖命中）
+    let p257 = {
+        expect: 257,
+        date: "2026-09-14",
+        nums: [
+            {num: 17, level: "core", score: 42.52, category: "warm"},
+            {num: 26, level: "core", score: 40.75, category: "warm"},
+            {num: 23, level: "core", score: 34.8, category: "warm"},
+            {num: 16, level: "core", score: 34.1, category: "warm"},
+            {num: 31, level: "core", score: 33.11, category: "warm"},
+            {num: 19, level: "supplement", score: 30.5, category: "warm"},
+            {num: 8, level: "supplement", score: 29.5, category: "warm"},
+            {num: 37, level: "supplement", score: 27.2, category: "warm"},
+            {num: 9, level: "supplement", score: 25.5, category: "warm"},
+            {num: 43, level: "supplement", score: 24.06, category: "warm"},
+            {num: 48, level: "cold", score: 32.57, category: "cold"},
+            {num: 29, level: "cold", score: 30.0, category: "cold"},
+            {num: 36, level: "cold", score: 27.29, category: "cold"},
+            {num: 45, level: "cold", score: 26.14, category: "cold"},
+            {num: 47, level: "cold", score: 24.06, category: "cold"}
+        ],
+        zodiacNums: [
+            {zodiac: "蛇", level: "core", score: 26.0, category: "hot"},
+            {zodiac: "鼠", level: "supplement", score: 22.83, category: "hot"},
+            {zodiac: "虎", level: "supplement", score: 20.47, category: "warm"},
+            {zodiac: "龙", level: "cold", score: 12.0, category: "cold"}
+        ],
+        top: [], kill: [],
+        open: 7, hit: false,
+        hitNums: false, hitZodiac: true,
+        basedOnPeriod: 256
+    };
+    
+    await fixPeriodData(p257);
+}
+
+async function init(){
+    let box = document.getElementById("indexOut");
+    const startTime = Date.now();
+    
+    // ⚡ 立即从缓存显示滚动提示（毫秒级，不等任何网络请求）
+    try {
+        let cache = JSON.parse(localStorage.getItem("cacheHistory") || "[]");
+        if (cache && cache.length > 0) {
+            let latest = cache[0];
+            let numsHtml = formatNums(latest.num);
+            let base = "📊 自动同步最新开奖，每日仅生成一次分析结果";
+            let text = `${base}　　📢 最新开奖：${latest.qishu}期（${latest.date}）${numsHtml}`;
+            document.getElementById("marqueeText").innerHTML = text + "　　" + text;
+            
+            // ★ 优化：立即用缓存数据渲染分析结果（不等网络）
+            let currentPeriod = Number(latest.qishu) + 1;
+            updateResult(latest);
+            renderTm({top: [], kill: []}, currentPeriod);  // 用缓存数据渲染
+        } else {
+            document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
+        }
+    } catch(e) {
+        document.getElementById("marqueeText").innerHTML = "📊 自动同步最新开奖，每日仅生成一次分析结果　　📊 自动同步最新开奖，每日仅生成一次分析结果";
+    }
+    
+    // ★ 修复已知被损坏的历史期数据
+    try {
+        await fixCorruptedPeriods();
+    } catch(e) {
+        console.log("历史期修复跳过:", e.message);
+    }
+    
+    // ★ 后台静默获取数据（不阻塞界面）
+    let data = [];
+    let useCache = false;
+    
+    // ★ 先从云端加载历史推荐（必须等完成后再继续，否则历史投注结果会显示空）
+    if (CLOUD_API_KEY) {
+        try {
+            await loadFromCloud();
+        } catch(e) {
+            console.log("云端加载失败:", e);
+        }
+    }
+
+    try{
+        data = await fetchData();
+        
+        // 如果API返回空数据，尝试使用缓存
+        if (!data || data.length === 0) {
+            let cacheStr = localStorage.getItem("cacheHistory");
+            if (cacheStr) {
+                try {
+                    data = JSON.parse(cacheStr);
+                    useCache = true;
+                } catch(e) {}
+            }
+        }
+    }catch(e){
+        // API失败时，尝试使用缓存
+        let cacheStr = localStorage.getItem("cacheHistory");
+        if (cacheStr) {
+            try {
+                data = JSON.parse(cacheStr);
+                useCache = true;
+            } catch(e2) {}
+        }
+    }
+    
+    if(!data || !data.length){
+        box.innerHTML = `
+        ⚠️ 数据加载失败<br><br>
+        <div style="font-size:12px;color:#666;margin:10px 0;">
+        可能的原因：<br>
+        • 网络连接问题<br>
+        • 防火墙/杀毒软件拦截<br>
+        • 服务器暂时不可用
+        </div>
+        <button onclick="location.reload()" style="margin-right:10px;">🔄 重试</button>
+        <button onclick="fixAllHistoryData()">🔧 修复历史数据</button>
+        `;
+        return;
+    }
+    
+    // ★ 数据获取完成，智能判断是否需要更新显示
+    let latest = data[0];
+    let newLatestQishu = Number(latest.qishu) || 0;
+    
+    // ★ 获取当前显示基于哪期数据（数据版本号）
+    let currentBasedOnPeriod = 0;
+    try {
+        let tmHistory = JSON.parse(localStorage.getItem("tmHistory") || "[]");
+        if (tmHistory && tmHistory.length > 0) {
+            // 找到当前显示期号的记录
+            let currentPeriod = newLatestQishu + 1;
+            let currentRecord = tmHistory.find(item => item.expect === currentPeriod);
+            if (currentRecord && currentRecord.basedOnPeriod) {
+                currentBasedOnPeriod = currentRecord.basedOnPeriod;
+            }
+        }
+    } catch (e) {
+        console.log("获取basedOnPeriod失败:", e.message);
+    }
+    
+    // ★ 智能判断：只有数据真的变了才刷新显示
+    if (newLatestQishu > currentBasedOnPeriod) {
+        // ✅ 有新数据 → 更新显示（值得刷一次）
+        box.innerHTML = "";
+        updateMarquee(latest);
+        await showTmAnalysis();
+        
+        showToast(`✅ 数据已更新`);
+    } else {
+        // ❌ 数据没变 → 不刷新（避免无意义刷屏）
+        // 只更新滚动条和提示即可
+        updateMarquee(latest);  // 只更新滚动条
+        
+        // 静默更新缓存（不重新渲染）
+        if (!useCache) {
+            // 如果是新拉取的数据，保存到cacheHistory供下次使用
+            localStorage.setItem("cacheHistory", JSON.stringify(data));
+        }
+        
+        showToast(`✅ 数据已更新`);
+    }
+}
+
+// ===== 初始化 =====
+init();
+scheduleRefresh();
+</script>
+
+</body>
+</html>

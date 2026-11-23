@@ -1,0 +1,18 @@
+name: Fetch KJ
+on:
+  schedule:
+    - cron: '45 3,12,21,22 * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: curl -s "https://zlkj-a1.kj54228cmw.xyz:54358/api/kjdata.php?g=am" -o kj.json
+      - run: |
+          git config user.name "cater12478"
+          git config user.email "928865989@qq.com"
+          git add kj.json
+          git commit -m "update" || exit 0
+          git push

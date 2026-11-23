@@ -1,0 +1,10 @@
+# IDE
+.idea/
+
+# 敏感凭据
+db/creds.json
+
+# 临时文件
+*.log
+_shot_*.png
+__pycache__/
