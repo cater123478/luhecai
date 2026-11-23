@@ -425,9 +425,8 @@ function openHelp(type) {
 
 function calcDimStats(records) {
     let dims = {
-        td:{天:0,地:0}, lr:{左:0,右:0}, fb:{前:0,后:0},
-        yj:{家:0,野:0}, mcc:{肉:0,菜:0,草:0},
-        size:{大:0,小:0}, parity:{单:0,双:0},bose: {红:0, 蓝:0, 绿:0}
+        td:{天:0,地:0}, lr:{左:0,右:0}, fb:{前:0,后:0}, yj:{家:0,野:0}, mcc:{肉:0,菜:0,草:0},size:{大:0,小:0}, parity:{单:0,双:0},
+        bose: {红:0, 蓝:0, 绿:0},tou:{'0头':0,'1头':0,'2头':0,'3头':0,'4头':0}
     };
     records.forEach(r => {
         let z = r.zodiac;
@@ -440,20 +439,25 @@ function calcDimStats(records) {
         let size = n <= 24 ? '小' : '大';
         let parity = n % 2 === 1 ? '单' : '双';
         let bose = ['红波'].includes(getBoseName(n)) ? '红' : (getBoseName(n) === '蓝波' ? '蓝' : '绿');
+        let tou = '0头';
+        if (n >= 10 && n <= 19) tou = '1头';
+        else if (n >= 20 && n <= 29) tou = '2头';
+        else if (n >= 30 && n <= 39) tou = '3头';
+        else if (n >= 40) tou = '4头';
 
         dims.td[td]++; dims.lr[lr]++; dims.fb[fb]++; dims.yj[yj]++; dims.mcc[mcc]++;
-        dims.size[size]++; dims.parity[parity]++;dims.bose[bose]++;
+        dims.size[size]++; dims.parity[parity]++;dims.bose[bose]++;dims.tou[tou]++;
     });
     return dims;
 }
 function fmtDimStats(dims) {
     function pct(obj) {
         let total = Object.values(obj).reduce((a,b)=>a+b,0) || 1;
-        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total*100)}%`).join('/');
+        return Object.keys(obj).map(k => `${k}${Math.round(obj[k]/total*100)}%`).join('-');
     }
     return [
-        `${pct(dims.td)}`,`${pct(dims.lr)}`,`${pct(dims.fb)}`,`${pct(dims.yj)}`,
-        `${pct(dims.mcc)}`,`${pct(dims.size)}`,`${pct(dims.parity)}`,`${pct(dims.bose)}`
+        `${pct(dims.td)}`,`${pct(dims.lr)}`,`${pct(dims.fb)}`,`${pct(dims.yj)}`,`${pct(dims.mcc)}`,`${pct(dims.size)}`,`${pct(dims.parity)}`,
+        `${pct(dims.bose)}`,`${pct(dims.tou)}`
     ].join('　');
 }
 
