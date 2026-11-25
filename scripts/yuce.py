@@ -65,19 +65,19 @@ if __name__ == "__main__":
     seq, issues = load_json(PATH, target_pos=-1)
     last_issue = issues[-1]
     next_issue = int(last_issue) + 1
-    print(f"共{len(seq)}期，最新期号={last_issue}，下一期={next_issue}")
-    print(f"最近5期：{list(zip(issues[-5:], seq[-5:]))}\n")
+    # print(f"共{len(seq)}期，最新期号={last_issue}，下一期={next_issue}")
+    # print(f"最近5期：{list(zip(issues[-5:], seq[-5:]))}\n")
 
-    for k in (2,3):
-        print(f"===== 回测：输出{k}个生肖 =====")
-        report("均匀", backtest(seq, issues, strat_uniform, k), k)
-        report("全量频率", backtest(seq, issues, strat_freq, k), k)
-        report("轮换均匀", backtest(seq, issues, strat_rotate, k), k)
-        print()
+    # for k in (2,3):
+    #     print(f"===== 回测：输出{k}个生肖 =====")
+    #     report("均匀", backtest(seq, issues, strat_uniform, k), k)
+    #     report("全量频率", backtest(seq, issues, strat_freq, k), k)
+    #     report("轮换均匀", backtest(seq, issues, strat_rotate, k), k)
+    #     print()
 
     print(f"===== 下一期（{next_issue}期）预测 =====")
-    for k in (2,3):
+    for k in (3,):
         print(f"\n-- 输出{k}个 --")
-        print("均匀       ->", strat_uniform(seq, k, last_issue))
-        print("全量频率   ->", strat_freq(seq, k, last_issue))
+        # print("均匀       ->", strat_uniform(seq, k, last_issue))
+        # print("全量频率   ->", strat_freq(seq, k, last_issue))
         print("轮换均匀   ->", strat_rotate(seq, k, last_issue))
