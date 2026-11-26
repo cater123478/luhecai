@@ -1,0 +1,73 @@
+{
+  "next_expect": 2026330,
+  "top12": [
+    {
+      "rank": 1,
+      "zodiac": "兔",
+      "score": 0.1458
+    },
+    {
+      "rank": 2,
+      "zodiac": "蛇",
+      "score": 0.1155
+    },
+    {
+      "rank": 3,
+      "zodiac": "馬",
+      "score": 0.1084
+    },
+    {
+      "rank": 4,
+      "zodiac": "羊",
+      "score": 0.1021
+    },
+    {
+      "rank": 5,
+      "zodiac": "牛",
+      "score": 0.1009
+    },
+    {
+      "rank": 6,
+      "zodiac": "豬",
+      "score": 0.0996
+    },
+    {
+      "rank": 7,
+      "zodiac": "猴",
+      "score": 0.0992
+    },
+    {
+      "rank": 8,
+      "zodiac": "龍",
+      "score": 0.0991
+    },
+    {
+      "rank": 9,
+      "zodiac": "狗",
+      "score": 0.0976
+    },
+    {
+      "rank": 10,
+      "zodiac": "虎",
+      "score": 0.0958
+    },
+    {
+      "rank": 11,
+      "zodiac": "鼠",
+      "score": 0.0955
+    },
+    {
+      "rank": 12,
+      "zodiac": "雞",
+      "score": 0.095
+    }
+  ],
+  "kill": [
+    "雞",
+    "鼠"
+  ],
+  "confidence": "S级（强信）",
+  "top1_acc": "32%~38%",
+  "top3_acc": "86%~103%",
+  "updated_at": "2026-11-26 19:04:51"
+}
