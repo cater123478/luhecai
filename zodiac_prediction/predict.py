@@ -6,6 +6,7 @@ from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 import json
+import os
 # ====================== 1. API接口配置 ======================
 HISTORY_API = "https://history.macaumarksix.com/history/macaujc2/y/{year}"
 LATEST_API = "https://macaumarksix.com/api/macaujc2.com"
@@ -223,5 +224,7 @@ result = {
     "top3_acc": TOP3准确率,
     "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 }
-with open("result.json", "w", encoding="utf-8") as f:
+
+OUT = os.path.join(os.path.dirname(__file__), "result.json")
+with open(OUT, "w", encoding="utf-8") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
