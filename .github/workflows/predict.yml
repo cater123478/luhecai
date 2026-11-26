@@ -33,7 +33,7 @@ jobs:
         run: python ./zodiac_prediction/predict.py
 
       - name: Commit ./zodiac_prediction/result.json
-      - run: |
+        run: |
           git config user.name "cater12478"
           git config user.email "928865989@qq.com"
           git add ./zodiac_prediction/result.json
