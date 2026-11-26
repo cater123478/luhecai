@@ -15,6 +15,9 @@ zodiacs = ["鼠", "牛", "虎", "兔", "龍", "蛇", "馬", "羊", "猴", "雞",
 zodiac_to_idx = {z: i for i, z in enumerate(zodiacs)}
 idx_to_zodiac = {i: z for i, z in enumerate(zodiacs)}
 
+# ★ 特征窗口期（全局统一控制，改这里即可）
+WINDOW_SIZE = 36
+
 # ====================== 2. 从API获取历史数据 ======================
 def deduplicate_data(data_list):
     """按期数去重，保留最后出现的"""
@@ -134,16 +137,16 @@ def compute_features(df):
         last = np.where(hist == z)[0]
         遗漏 = len(hist) - last[-1] if len(last) > 0 else len(hist)
         
-        # 近15期出现次数,用近15期特征计算
-        recent = hist[-15:] if len(hist) >= 15 else hist
-        近15次 = np.sum(recent == z)
+        # 近WINDOW_SIZE期出现次数
+        recent = hist[-WINDOW_SIZE:] if len(hist) >= WINDOW_SIZE else hist
+        近N次 = np.sum(recent == z)
         
         # 概率偏离度
-        实际频率 = 近15次 / max(len(recent), 1)
+        实际频率 = 近N次 / max(len(recent), 1)
         理论概率 = 1/12
         偏离度 = 实际频率 - 理论概率
         
-        features.append([遗漏, 近15次, 偏离度])
+        features.append([遗漏, 近N次, 偏离度])
     return np.array(features)
 
 X = compute_features(df)
@@ -152,7 +155,7 @@ X = compute_features(df)
 train_X = []
 train_y = []
 # 训练集用全部数据
-for i in range(15, len(df)):
+for i in range(WINDOW_SIZE, len(df)):
     window = df.iloc[:i]
     fx = compute_features(window)
     train_X.append(fx)
@@ -215,13 +218,13 @@ def print_feature_analysis():
     print("\n" + "-"*50)
     print("各生肖详细特征分析：")
     print("-"*50)
-    print(f"{'生肖':<3} {'遗漏':<5} {'近15期出现次数':<10} {'偏离度':<8}")
+    print(f"{'生肖':<3} {'遗漏':<5} {f'近{WINDOW_SIZE}期出现次数':<10} {'偏离度':<8}")
     print("-"*50)
     
     for z_idx in range(12):
         zodiac = zodiacs[z_idx]
-        遗漏, 近15次, 偏离度 = X[z_idx]
-        print(f"{zodiac:<3} {遗漏:<12} {int(近15次):<6d} {偏离度:>9.4f}")
+        遗漏, 近N次, 偏离度 = X[z_idx]
+        print(f"{zodiac:<3} {遗漏:<12} {int(近N次):<6d} {偏离度:>9.4f}")
 
 # ====================== 9. 输出最终结果 ======================
 print("\n" + "="*50)
@@ -229,12 +232,12 @@ print(f"【{next_expect}期 机器学习生肖概率测算】")
 print("="*50)
 print(f"数据源：API自动获取")
 
-# 显示最近15期
+# 显示最近WINDOW_SIZE期
 print("\n" + "-"*50)
-print("最近15期开奖：")
+print(f"最近{WINDOW_SIZE}期开奖：")
 print("-"*50)
-recent_15 = data[-15:] if len(data)>=15 else data
-for idx, (expect, zodiac) in enumerate(reversed(recent_15), 1):
+recent_n = data[-WINDOW_SIZE:] if len(data)>=WINDOW_SIZE else data
+for idx, (expect, zodiac) in enumerate(reversed(recent_n), 1):
     print(f"{idx:2d}. {expect}期 - {zodiac}")
 
 # 显示特征分析

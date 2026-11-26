@@ -1,0 +1,41 @@
+name: Predict
+
+on:
+  schedule:
+    - cron: "30 14 * * *"   # 每天 UTC 14:30（北京时间 22:30），按需改
+  workflow_dispatch:         # 支持手动触发
+
+permissions:
+  contents: write            # 允许提交 result.json
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install deps
+        run: pip install -r ./zodiac_prediction/requirements.txt
+
+      - name: Run predict
+        run: python ./zodiac_prediction/predict.py
+
+      - name: Commit ./zodiac_prediction/result.json
+      - run: |
+          git config user.name "cater12478"
+          git config user.email "928865989@qq.com"
+          git add ./zodiac_prediction/result.json
+          git commit -m "update" || exit 0
+          git push

@@ -10,7 +10,7 @@ HISTORY_API = "https://history.macaumarksix.com/history/macaujc2/y/{year}"
 zodiacs = ["鼠", "牛", "虎", "兔", "龍", "蛇", "馬", "羊", "猴", "雞", "狗", "豬"]
 zodiac_to_idx = {z: i for i, z in enumerate(zodiacs)}
 
-WINDOW = 15          # 特征窗口（与 open.py 一致）
+WINDOW = 36          # 特征窗口（与 open.py 一致）
 MIN_TRAIN = 150      # 最少训练期数，从第151期开始回测
 RETRAIN_STEP = 5     # 每5期重训一次模型（模拟实战：每周更新一次）
 
