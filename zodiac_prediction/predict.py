@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
@@ -215,6 +215,7 @@ next_expect = data[-1][0] + 1
 
 # ====================== 详细特征分析 ======================
 print("="*50)
+CST = timezone(timedelta(hours=8))
 result = {
     "next_expect": next_expect,
     "top12": [{"rank": r, "zodiac": z, "score": round(float(s),4)} for r,z,s in top12],
@@ -222,7 +223,7 @@ result = {
     "confidence": 置信等级,
     "top1_acc": 单挑准确率,
     "top3_acc": TOP3准确率,
-    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    "updated_at": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
 }
 
 OUT = os.path.join(os.path.dirname(__file__), "result.json")
