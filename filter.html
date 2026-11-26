@@ -269,16 +269,16 @@
         </div>
         <div id="recent30Stats" style="font-size:13px; line-height:1.9; color:#475569; margin-bottom:8px;"></div>
     </div>
-        <!-- 趋势推荐 2肖4码 -->
-    <!--<div class="card" style="margin-top:14px;">
+        <!-- 大模型预测 -->
+    <div class="card" style="margin-top:14px;">
         <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>🎯 趋势推荐（2肖4码）</span>
+            <span>🎯 模型推荐</span>
             <button onclick="genTrendRecommend()" style="padding:6px 14px; border-radius:20px; border:none; background:linear-gradient(45deg,#7b1fa2,#4a148c); color:#fff; font-size:13px; cursor:pointer;">生成推荐</button>
         </div>
         <div id="trendRecBox" style="font-size:13px; line-height:1.9;">
             <div style="color:#94a3b8; font-size:13px; padding:8px 0;">点击“生成推荐”查看 2 肖 4 码</div>
         </div>
-    </div>-->
+    </div>
 </div>
 
 <!-- 速查弹层 -->
@@ -982,262 +982,85 @@ const TREND_COLD_STREAK = 2; // 最近连续2期 回补
 
 async function genTrendRecommend() {
     let box = document.getElementById('trendRecBox');
-    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在读取 kj.json ...</div>`;
+    box.innerHTML = `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">⏳ 正在读取 result.json ...</div>`;
 
     try {
-        let res = await fetch('kj.json?t=' + Date.now());
-        if (!res.ok) throw new Error('kj.json 读取失败');
-        let json = await res.json();
-        let raw = json.data || [];
-        let flat = [];
-        raw.forEach(i => Array.isArray(i) ? flat.push(...i) : flat.push(i));
-        if (!flat.length) throw new Error('kj.json 无数据');
+        let res = await fetch('./zodiac_prediction/result.json?t=' + Date.now());
+        if (!res.ok) throw new Error('result.json 读取失败');
+        let d = await res.json();
 
-        // 最新年份
-        let years = flat.map(i => parseInt(i.year || 0)).filter(y => y > 0);
-        let maxYear = years.length ? Math.max(...years) : 0;
-        let list = maxYear ? flat.filter(i => parseInt(i.year || 0) === maxYear) : flat;
+        // 兼容两种结构：直接是对象，或包在 data 里
+        if (d.data && !d.top12) d = d.data;
 
-        // 整理记录（按期号倒序，最新在前）
-        let records = [];
-        list.forEach(item => {
-            let qishu = String(item.qishu || '').trim();
-            let numStr = String(item.num || '').trim();
-            if (!qishu || !numStr) return;
-            let nums = numStr.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
-            if (nums.length < 7) return;
-            let openNum = nums[nums.length - 1];
-            let zodiac = KJ_ZODIAC_MAP[openNum] || '';
-            if (!zodiac) return;
-            records.push({ qishu, num: openNum, zodiac });
-        });
-        records.sort((a, b) => (parseInt(b.qishu) || 0) - (parseInt(a.qishu) || 0));
+        let top12 = d.top12 || [];
+        if (!top12.length) throw new Error('result.json 无 top12 数据');
 
-        if (records.length < 10) throw new Error('有效记录不足 10 期');
+        let kill = Array.isArray(d.kill) ? d.kill.join('、') : (d.kill || '—');
+        let updated = d.updated_at || '—';
+        let nextExpect = d.next_expect || '—';
+        let confidence = d.confidence || '—';
+        let top1Acc = d.top1_acc || '—';
+        let top3Acc = d.top3_acc || '—';
 
-        // 用最近 N 期（不含最新一期，预测下一期）
-        let history = records.slice(1, 1 + TREND_N);
-        if (history.length < 10) throw new Error('历史窗口不足');
-
-        // 统计五个维度
-        let dims = {
-            td: { 天: 0, 地: 0 }, lr: { 左: 0, 右: 0 },
-            fb: { 前: 0, 后: 0 }, yj: { 野: 0, 家: 0 },
-            mcc: { 肉: 0, 菜: 0, 草: 0 }
-        };
-        let recent10 = history.slice(0, 10);
-        let streak = { td: '', lr: '', fb: '', yj: '', mcc: '' };
-        let streakLen = { td: 0, lr: 0, fb: 0, yj: 0, mcc: 0 };
-
-        function sideOfZodiac(z) {
-            return {
-                td: ['兔','马','猴','猪','牛','龙'].includes(z) ? '天' : '地',
-                lr: ['牛','鼠','鸡','猴','蛇','龙'].includes(z) ? '左' : '右',
-                fb: ['鼠','牛','虎','兔','龙','蛇'].includes(z) ? '前' : '后',
-                yj: ['猴','蛇','龙','兔','虎','鼠'].includes(z) ? '野' : '家',
-                mcc: ['虎','蛇','龙','狗'].includes(z) ? '肉' : (['猪','鼠','鸡','猴'].includes(z) ? '菜' : '草')
-            };
-        }
-
-        history.forEach(r => {
-            let s = sideOfZodiac(r.zodiac);
-            dims.td[s.td]++; dims.lr[s.lr]++; dims.fb[s.fb]++; dims.yj[s.yj]++; dims.mcc[s.mcc]++;
-        });
-
-        // 连续同向
-        ['td','lr','fb','yj','mcc'].forEach(k => {
-            let first = history[0] ? sideOfZodiac(history[0].zodiac)[k] : '';
-            let len = 0;
-            for (let r of history) {
-                if (sideOfZodiac(r.zodiac)[k] === first) len++; else break;
-            }
-            streak[k] = first; streakLen[k] = len;
-        });
-
-        // 近10期统计
-        let recent10Count = { td:{}, lr:{}, fb:{}, yj:{}, mcc:{} };
-        ['td','lr','fb','yj','mcc'].forEach(k => recent10Count[k] = {});
-        recent10.forEach(r => {
-            let s = sideOfZodiac(r.zodiac);
-            ['td','lr','fb','yj','mcc'].forEach(k => {
-                recent10Count[k][s[k]] = (recent10Count[k][s[k]] || 0) + 1;
-            });
-        });
-
-        // 维度热度快照
-        let snapshot = `
-            <div style="font-size:12px;color:#475569;margin-bottom:8px;">
-                <b>维度热度（近${TREND_N}期）：</b><br>
-                天地：天 ${dims.td.天} / 地 ${dims.td.地}　
-                左右：左 ${dims.lr.左} / 右 ${dims.lr.右}　
-                前后：前 ${dims.fb.前} / 后 ${dims.fb.后}　
-                野家：野 ${dims.yj.野} / 家 ${dims.yj.家}　
-                肉菜草：肉 ${dims.mcc.肉} / 菜 ${dims.mcc.菜} / 草 ${dims.mcc.草}
-            </div>
-        `;
-
-                // ==================== 生肖打分（以近10期趋势为主） ====================
-        const ALL_ZODIACS = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
-        const DIM_KEYS = ['td','lr','fb','yj','mcc'];
-        const DIM_SIDES = {
-            td: ['天','地'], lr: ['左','右'], fb: ['前','后'],
-            yj: ['野','家'], mcc: ['肉','菜','草']
-        };
-
-        // 辅助：取某维度某侧在最近 n 期的次数
-        function countRecent(k, side, n) {
-            return history.slice(0, n).filter(r => sideOfZodiac(r.zodiac)[k] === side).length;
-        }
-
-        // 辅助：确定某维度的趋势侧
-        function trendSide(k) {
-            let sides = DIM_SIDES[k];
-            if (sides.length === 2) {
-                let [a, b] = sides;
-                let c10a = countRecent(k, a, 10), c10b = countRecent(k, b, 10);
-                if (c10a !== c10b) return c10a > c10b ? a : b;
-                let c5a = countRecent(k, a, 5), c5b = countRecent(k, b, 5);
-                if (c5a !== c5b) return c5a > c5b ? a : b;
-                let c3a = countRecent(k, a, 3), c3b = countRecent(k, b, 3);
-                if (c3a !== c3b) return c3a > c3b ? a : b;
-                // 仍持平：用30期
-                let d = dims[k];
-                return (d[a] || 0) >= (d[b] || 0) ? a : b;
-            } else {
-                // 肉菜草：近10期最多者
-                let best = sides[0], bestC = -1;
-                sides.forEach(sd => {
-                    let c = countRecent(k, sd, 10);
-                    if (c > bestC) { bestC = c; best = sd; }
-                });
-                return best;
-            }
-        }
-
-        let trendSides = {};
-        DIM_KEYS.forEach(k => trendSides[k] = trendSide(k));
-
-        let zodiacScores = [];
-        ALL_ZODIACS.forEach(z => {
-            let s = sideOfZodiac(z);
-            let score = 0;
-            let marks = [];
-            let trendHits = 0;
-
-            DIM_KEYS.forEach(k => {
-                let side = s[k];
-                let total = Object.values(dims[k]).reduce((a,b)=>a+b,0) || 1;
-                let base = (dims[k][side] || 0) / total;
-                let r10side = recent10Count[k][side] || 0;
-                let isOverheat = r10side >= TREND_OVER10;
-
-                let factor = 1;
-                if (isOverheat) { factor *= 0.2; marks.push(`${side}过热降权`); }
-                if (streak[k] === side && streakLen[k] >= TREND_STREAK) { factor *= 0.7; marks.push(`${side}连续降权`); }
-                if (r10side <= TREND_COLD10 && history.slice(0,2).every(r => sideOfZodiac(r.zodiac)[k] === side)) {
-                    factor *= 1.3; marks.push(`${side}冷门回补`);
-                }
-
-                score += base * factor;
-
-                // 趋势命中：等于趋势侧且未过热 → +0.4
-                if (side === trendSides[k] && !isOverheat) {
-                    score += 0.4;
-                    trendHits++;
-                }
-            });
-
-            // 多维度命中趋势侧额外加成
-            if (trendHits >= 2) score += 0.3;
-            if (trendHits >= 3) score += 0.6;
-            if (trendHits >= 4) score += 1.0;
-            if (trendHits >= 5) score += 1.5;
-
-            // ===== 方案A：整体过热惩罚 =====
-            let overheatSides = [];
-            DIM_KEYS.forEach(k => {
-                let side = s[k];
-                let r10side = recent10Count[k][side] || 0;
-                if (r10side >= TREND_OVER10) overheatSides.push(side);
-            });
-            if (overheatSides.length > 0) {
-                score *= Math.pow(0.5, overheatSides.length);
-                overheatSides.forEach(sd => marks.push(`${sd}过热整体降权`));
-            }
-
-            zodiacScores.push({ zodiac: z, score, marks: [...new Set(marks)] });
-        });
-
-        zodiacScores.sort((a,b) => b.score - a.score);
-        let topZ = zodiacScores.slice(0, 2);
-
-        // ==================== 4码 ====================
-        let candidateNums = [];
-        topZ.forEach((z) => {
-            (ZODIAC_NUMS[z.zodiac] || []).forEach(n => {
-                let freq = history.filter(r => r.num === n).length;
-                let lastIdx = history.findIndex(r => r.num === n);
-                let miss = lastIdx === -1 ? history.length : lastIdx;
-                let recent3 = history.slice(0, 10).filter(r => r.num === n).length;
-                let numScore = freq * 10 + Math.sqrt(miss) * 2 + z.score * 20;
-                let nMark = [];
-                if (recent3 >= 3) { numScore *= 0.6; nMark.push('近10期过热'); }
-                if (miss >= 15) { numScore *= 1.2; nMark.push('遗漏回补'); }
-                candidateNums.push({ num: n, zodiac: z.zodiac, zScore: z.score, score: numScore, marks: nMark });
-            });
-        });
-        candidateNums.sort((a,b) => b.score - a.score);
-        // 每肖至少1码，单肖最多3码，共4码
-        let picked = [];
-        let countByZ = {};
-        topZ.forEach(z => countByZ[z.zodiac] = 0);
-        topZ.forEach(z => {
-            let first = candidateNums.find(c => c.zodiac === z.zodiac && !picked.includes(c));
-            if (first) { picked.push(first); countByZ[z.zodiac]++; }
-        });
-        for (let c of candidateNums) {
-            if (picked.length >= 4) break;
-            if (picked.includes(c)) continue;
-            if (countByZ[c.zodiac] >= 3) continue;
-            picked.push(c); countByZ[c.zodiac]++;
-        }
-        picked.sort((a,b) => b.score - a.score);
-
-        // ==================== 渲染 ====================
-        let zHtml = topZ.map((z,i) => {
-            let s = sideOfZodiac(z.zodiac);
-            let label = `${s.td}/${s.lr}/${s.fb}/${s.yj}/${s.mcc}`;
-            let icon = i === 0 ? '🥇' : (i === 1 ? '🥈' : '🥉');
-            return `
-            <div style="padding:6px 0;border-bottom:1px dashed #eef2f7;">
-                <b style="font-size:15px;">${icon} ${z.zodiac} <span style="font-size:12px;color:#475569;font-weight:500;">${label}</span></b>
-                <span style="color:#64748b;font-size:12px;">得分 ${(z.score*100).toFixed(1)}</span>
-                ${z.marks.length ? `<span style="color:#dc2626;font-size:11px;margin-left:6px;">${z.marks.join('、')}</span>` : ''}
-            </div>
-        `;
+        // 前6名重点推荐（一行显示）
+        let top6Html = top12.slice(0, 6).map((x, i) => {
+            let rank = x.rank || (i + 1);
+            let zodiac = x.zodiac || x.z || '';
+            let score = (x.score !== undefined) ? Number(x.score).toFixed(4) : '';
+            let star = rank <= 3 ? ' ⭐' : '';
+            return `<span style="margin-right:14px;white-space:nowrap;">
+                <b>${rank}. ${zodiac}${star}</b>
+                <span style="color:#64748b;font-size:12px;">${score}</span>
+            </span>`;
         }).join('');
 
-        let nHtml = picked.map((c) => {
-            let wx = NUM_TO_WUXING[c.num] || '?';
-            return `
-            <div style="padding:5px 0;border-bottom:1px dashed #eef2f7;">
-                <b style="color:${getColor(c.num)};font-size:16px;">${c.num.toString().padStart(2,'0')}</b>
-                <span style="font-size:12px;color:#475569;">（${c.zodiac}/${wx}）得分 ${c.score.toFixed(1)}</span>
-                ${c.marks.length ? `<span style="color:#dc2626;font-size:11px;margin-left:6px;">${c.marks.join('、')}</span>` : ''}
-            </div>
-        `;
+        // 完整TOP12（一行显示）
+        let allHtml = top12.map((x, i) => {
+            let rank = x.rank || (i + 1);
+            let zodiac = x.zodiac || x.z || '';
+            let score = (x.score !== undefined) ? Number(x.score).toFixed(4) : '';
+            return `<span style="margin-right:14px;white-space:nowrap;">
+                <span style="color:#475569;">${rank}、${zodiac}</span>
+                <span style="color:#94a3b8;font-size:12px;">${score}</span>
+            </span>`;
+        }).join('');
+
+        let histRes = await fetch('./zodiac_prediction/recommend_history.json?t=' + Date.now());
+        let hist = histRes.ok ? await histRes.json() : [];
+        let recent10 = hist.slice(-10).reverse();
+
+        let histHtml = recent10.map(r => {
+            let actual = r.actual || '';
+            let items = r.zodiacs.map(z => {
+                let hit = actual && z === actual;
+                return `<span style="${hit ? 'color:#dc2626;font-weight:700;' : 'color:#475569;'}">${z}</span>`;
+            }).join('、');
+            return `<div style="padding:4px 0;border-bottom:1px dashed #eef2f7;">
+                ${r.issue}期：推荐 ${items}　实际 <b>${actual || '待开'}</b>
+            </div>`;
         }).join('');
 
         box.innerHTML = `
-            ${snapshot}
-            <div style="margin-bottom:8px;"><b>推荐 2 肖：</b></div>
-            ${zHtml}
-            <div style="margin:10px 0 8px;"><b>重注 4 码：</b></div>
-            ${nHtml}
+            <div style="margin-top:16px;padding-top:12px;border-top:2px solid #e2e8f0;">
+                <div style="font-size:12px;color:#475569;margin-bottom:8px;">
+                    <b>机器学习生肖测算（${nextExpect}期）</b><br>
+                    置信：${confidence}　TOP1：${top1Acc}　TOP3：${top3Acc}<br>
+                    杀肖：${kill}<br>
+                    更新时间：${updated}
+                </div>
+
+                <div style="margin:8px 0 6px;"><b>🔥 前6名重点推荐：</b></div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px 0;">${top6Html}</div>
+
+                <div style="margin:12px 0 6px;"><b>完整TOP12排名：</b></div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px 0;">${allHtml}</div>
+            </div>
+            <div style="margin:12px 0 6px;"><b>最近10期推荐 vs 开奖：</b></div>
+            <div>${histHtml}</div>
         `;
     } catch (e) {
         console.error(e);
-        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 生成失败：${e.message}</div>`;
+        box.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0;">❌ 读取 result.json 失败：${e.message}</div>`;
     }
 }
 

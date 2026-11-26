@@ -18,6 +18,44 @@ idx_to_zodiac = {i: z for i, z in enumerate(zodiacs)}
 
 # ★ 特征窗口期（全局统一控制，改这里即可）
 WINDOW_SIZE = 15
+BASE_DIR = os.path.dirname(__file__)
+OUT = os.path.join(BASE_DIR, "result.json")
+HIST_FILE = os.path.join(os.path.dirname(__file__), "recommend_history.json")
+CST = timezone(timedelta(hours=8))
+
+def load_hist():
+    if os.path.exists(HIST_FILE):
+        with open(HIST_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_hist(hist):
+    hist = hist[-50:]  # 只保留最近50期
+    with open(HIST_FILE, "w", encoding="utf-8") as f:
+        json.dump(hist, f, ensure_ascii=False, indent=2)
+
+def fill_actual(latest_issue, latest_zodiac):
+    """开奖后回填最近一期的实际生肖"""
+    hist = load_hist()
+    changed = False
+    for r in hist:
+        if str(r["issue"]) == str(latest_issue) and r.get("actual") != latest_zodiac:
+            r["actual"] = latest_zodiac
+            changed = True
+    if changed:
+        save_hist(hist)
+
+def append_recommend(issue, zodiacs):
+    """追加本期推荐（同期待覆盖）"""
+    hist = load_hist()
+    hist = [r for r in hist if str(r["issue"]) != str(issue)]
+    hist.append({
+        "issue": str(issue),
+        "zodiacs": zodiacs,
+        "actual": None,
+        "time": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
+    })
+    save_hist(hist)
 
 # ====================== 2. 从API获取历史数据 ======================
 def deduplicate_data(data_list):
@@ -124,6 +162,8 @@ if not data:
 
 print(f"已获取到 {len(data)} 期历史数据")
 print(f"最新一期: {data[-1][0]} - {data[-1][1]}")
+# 开奖后回填最近一期的实际生肖
+fill_actual(data[-1][0], data[-1][1])
 
 # 构建DataFrame
 df = pd.DataFrame(data, columns=["期数", "生肖"])
@@ -226,6 +266,11 @@ result = {
     "updated_at": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
 }
 
-OUT = os.path.join(os.path.dirname(__file__), "result.json")
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
+
+# 追加本期推荐（取前3名作为推荐生肖）
+append_recommend(next_expect, [z for _, z, _ in top12[:3]])
+
+print(f"已写入 {OUT}")
+print(f"已更新 {HIST_FILE}")
