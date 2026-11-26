@@ -1,73 +1,73 @@
 {
-  "next_expect": 2026330,
+  "next_expect": 2026331,
   "top12": [
     {
       "rank": 1,
       "zodiac": "兔",
-      "score": 0.1458
+      "score": 0.138
     },
     {
       "rank": 2,
-      "zodiac": "蛇",
-      "score": 0.1155
+      "zodiac": "豬",
+      "score": 0.11
     },
     {
       "rank": 3,
-      "zodiac": "馬",
-      "score": 0.1084
+      "zodiac": "鼠",
+      "score": 0.1061
     },
     {
       "rank": 4,
-      "zodiac": "羊",
-      "score": 0.1021
+      "zodiac": "虎",
+      "score": 0.1043
     },
     {
       "rank": 5,
-      "zodiac": "牛",
-      "score": 0.1009
+      "zodiac": "羊",
+      "score": 0.1011
     },
     {
       "rank": 6,
-      "zodiac": "豬",
-      "score": 0.0996
+      "zodiac": "猴",
+      "score": 0.0994
     },
     {
       "rank": 7,
-      "zodiac": "猴",
+      "zodiac": "蛇",
       "score": 0.0992
     },
     {
       "rank": 8,
-      "zodiac": "龍",
-      "score": 0.0991
+      "zodiac": "狗",
+      "score": 0.0992
     },
     {
       "rank": 9,
-      "zodiac": "狗",
-      "score": 0.0976
+      "zodiac": "馬",
+      "score": 0.0984
     },
     {
       "rank": 10,
-      "zodiac": "虎",
-      "score": 0.0958
+      "zodiac": "雞",
+      "score": 0.0979
     },
     {
       "rank": 11,
-      "zodiac": "鼠",
-      "score": 0.0955
+      "zodiac": "龍",
+      "score": 0.0978
     },
     {
       "rank": 12,
-      "zodiac": "雞",
-      "score": 0.095
+      "zodiac": "牛",
+      "score": 0.0968
     }
   ],
   "kill": [
-    "雞",
-    "鼠"
+    "牛",
+    "龍"
   ],
-  "confidence": "S级（强信）",
-  "top1_acc": "32%~38%",
-  "top3_acc": "86%~103%",
-  "updated_at": "2026-11-26 19:52:19"
+  "confidence": "A级（中信）",
+  "top1_acc": "26%~32%",
+  "top3_acc": "70%~86%",
+  "updated_at": "2026-11-27 05:49:06"
 }
