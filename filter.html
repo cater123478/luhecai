@@ -1032,7 +1032,7 @@ async function genTrendRecommend() {
         let histHtml = recent10.map(r => {
             let actual = r.actual || '';
             let actualZ = actual.replace(/\d+$/, '');
-            let top3 = (r.zodiacs || []).slice(0, 3);
+            let top3 = (r.zodiacs || []).slice(0, 4);
             let items = top3.map(z => {
                 let hit = actualZ && z === actualZ;
                 return `<span style="${hit ? 'color:#fa0606;font-weight:700;background-color: yellow' : 'color:#475569;'}">${z}</span>`;
