@@ -1,0 +1,41 @@
+name: Update kj.json
+
+on:
+  schedule:
+    # 每天 UTC 14:00（北京时间 22:00）跑一次，可按需调整
+    - cron: "0 2,8 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch and convert
+        run: python update_kj.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "cater12478"
+          git config user.email "928865989@qq.com"
+          git add kj.json
+          if git diff --cached --quiet; then
+            echo "kj.json 无变化，跳过提交"
+          else
+            git commit -m "update kj.json $(date -u +'%Y-%m-%d %H:%M:%S')"
+            git push
+          fi
