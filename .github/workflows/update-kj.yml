@@ -1,4 +1,4 @@
-name: Update kj.json
+name: update-kj
 
 on:
   schedule:
