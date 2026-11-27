@@ -30,28 +30,37 @@ def load_hist():
     return []
 
 def save_hist(hist):
-    hist = hist[-50:]  # 只保留最近50期
+    hist = hist[-50:]
     with open(HIST_FILE, "w", encoding="utf-8") as f:
-        json.dump(hist, f, ensure_ascii=False, indent=2)
+        f.write("[\n")
+        f.write(",\n".join(json.dumps(r, ensure_ascii=False) for r in hist))
+        f.write("\n]")
 
-def fill_actual(latest_issue, latest_zodiac):
-    """开奖后回填最近一期的实际生肖"""
+def fill_actual(latest_issue, latest_zodiac, latest_num=None):
     hist = load_hist()
     changed = False
     for r in hist:
-        if str(r["issue"]) == str(latest_issue) and r.get("actual") != latest_zodiac:
-            r["actual"] = latest_zodiac
-            changed = True
+        if str(r["issue"]) == str(latest_issue):
+            if latest_num is not None:
+                actual = f"{latest_zodiac}{latest_num}"
+            else:
+                # 没号码：只在原来是空或只有生肖时才写生肖，不覆盖已有号码
+                old = r.get("actual") or ""
+                if old and any(ch.isdigit() for ch in old):
+                    continue
+                actual = latest_zodiac
+            if r.get("actual") != actual:
+                r["actual"] = actual
+                changed = True
     if changed:
         save_hist(hist)
 
 def append_recommend(issue, zodiacs):
-    """追加本期推荐（同期待覆盖）"""
     hist = load_hist()
     hist = [r for r in hist if str(r["issue"]) != str(issue)]
     hist.append({
         "issue": str(issue),
-        "zodiacs": zodiacs,
+        "zodiacs": zodiacs,          # 全部12个，按排名
         "actual": None,
         "time": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
     })
@@ -94,7 +103,7 @@ def get_history_data(years=[2025, 2026]):
     return all_data
 
 def get_latest_data():
-    """获取最新一期数据"""
+    """获取最新一期数据，返回 (expect, zodiac, num)"""
     try:
         print("正在获取最新一期数据...")
         resp = requests.get(LATEST_API, timeout=10)
@@ -104,9 +113,20 @@ def get_latest_data():
                 item = data_list[0]
                 expect = int(item["expect"])
                 zodiac_list = item["zodiac"].split(",")
-                if zodiac_list:
-                    zodiac = zodiac_list[-1].strip()
-                    return (expect, zodiac)
+                zodiac = zodiac_list[-1].strip() if zodiac_list else None
+
+                # 取特码号码（num 最后一个）
+                num = None
+                num_str = item.get("openCode", "")
+                if num_str:
+                    nums = [x.strip() for x in str(num_str).split(",") if x.strip()]
+                    if nums:
+                        try:
+                            num = int(nums[-1])
+                        except ValueError:
+                            num = None
+
+                return (expect, zodiac, num)
     except Exception as e:
         print(f"获取最新数据失败: {e}")
     return None
@@ -123,7 +143,10 @@ original_count = len(data)
 # 获取最新一期并补充（按期数去重）
 latest = get_latest_data()
 if latest:
-    data.append(latest)
+    data.append((latest[0], latest[1]))
+    latest_num = latest[2]
+else:
+    latest_num = None
 
 # 最终去重
 data = deduplicate_data(data)
@@ -163,7 +186,7 @@ if not data:
 print(f"已获取到 {len(data)} 期历史数据")
 print(f"最新一期: {data[-1][0]} - {data[-1][1]}")
 # 开奖后回填最近一期的实际生肖
-fill_actual(data[-1][0], data[-1][1])
+fill_actual(data[-1][0], data[-1][1], latest_num)
 
 # 构建DataFrame
 df = pd.DataFrame(data, columns=["期数", "生肖"])
@@ -270,7 +293,7 @@ with open(OUT, "w", encoding="utf-8") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
 # 追加本期推荐（取前3名作为推荐生肖）
-append_recommend(next_expect, [z for _, z, _ in top12[:3]])
+append_recommend(next_expect, [z for _, z, _ in top12])
 
 print(f"已写入 {OUT}")
 print(f"已更新 {HIST_FILE}")
