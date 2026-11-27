@@ -8,7 +8,7 @@ jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: curl -s "https://zlkj-a1.kj54228cmw.xyz:54358/api/kjdata.php?g=am" -o kj.json
       - run: |
           git config user.name "cater12478"
