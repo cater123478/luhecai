@@ -2,7 +2,7 @@ name: Predict
 
 on:
   schedule:
-    - cron: "30 8,12 * * *"   # 每天 UTC 14:30（北京时间 22:30），按需改
+    - cron: "30 3,9 * * *"   # 每天 UTC 14:30（北京时间 22:30），按需改
   workflow_dispatch:         # 支持手动触发
 
 permissions:
